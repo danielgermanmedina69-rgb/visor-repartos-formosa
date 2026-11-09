@@ -122,29 +122,102 @@
     });
 
     async function searchAddress() {
-      const q = document.getElementById('address').value.trim();
-      if (!q) { statusBox.textContent = 'Escribí una calle y una altura para buscar.'; return; }
-      statusBox.textContent = 'Buscando dirección…';
-      try {
-        const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&country=Argentina&city=Formosa&q=' + encodeURIComponent(q);
-        const response = await fetch(url, { headers:{'Accept-Language':'es'} });
-        if (!response.ok) throw new Error('Servicio de búsqueda no disponible');
-        const results = await response.json();
-        if (!results.length) { statusBox.textContent = 'No encontré esa dirección. Probá con el nombre de la calle y la altura.'; return; }
-        const p = results[0], point = [Number(p.lat), Number(p.lon)];
-        map.setView(point, 18);
-        L.marker(point).addTo(map).bindPopup(p.display_name).openPopup();
-        statusBox.textContent = 'Dirección encontrada. La ubicación puede ser aproximada; verificá la parcela en las capas catastrales.';
-      } catch (e) {
-        statusBox.textContent = 'No se pudo buscar la dirección en este momento. Probá más tarde.';
+  const q = document.getElementById('address').value.trim();
+
+  if (!q) {
+    statusBox.textContent = 'Escribí una calle y una altura.';
+    return;
+  }
+
+  statusBox.textContent = 'Buscando dirección en Formosa…';
+
+  let found = null;
+
+  // Primera fuente: OpenStreetMap
+  try {
+    const url = new URL(
+      'https://nominatim.openstreetmap.org/search'
+    );
+
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('q', q + ', Formosa, Argentina');
+    url.searchParams.set('countrycodes', 'ar');
+    url.searchParams.set('limit', '5');
+
+    const response = await fetch(url, {
+      headers: { 'Accept-Language': 'es' }
+    });
+
+    if (response.ok) {
+      const results = await response.json();
+
+      if (results.length) {
+        found = {
+          lat: results[0].lat,
+          lon: results[0].lon,
+          name: results[0].display_name
+        };
       }
     }
-    document.getElementById('searchBtn').addEventListener('click', searchAddress);
-    document.getElementById('address').addEventListener('keydown', e => { if (e.key === 'Enter') searchAddress(); });
+  } catch (e) {
+    console.log('Primera búsqueda no disponible');
+  }
 
-    map.on('click', e => {
-      statusBox.textContent = `Punto seleccionado: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}. Para consultar datos parcelarios necesitamos que responda el servicio WMS.`;
-    });
+  // Segunda fuente: Photon
+  if (!found) {
+    try {
+      const url = new URL('https://photon.komoot.io/api/');
+
+      url.searchParams.set('q', q + ', Formosa, Argentina');
+      url.searchParams.set('lat', '-26.184');
+      url.searchParams.set('lon', '-58.175');
+      url.searchParams.set('limit', '5');
+      url.searchParams.set('lang', 'es');
+
+      const response = await fetch(url);
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data.features.length) {
+          const feature = data.features[0];
+          const coords = feature.geometry.coordinates;
+
+          found = {
+            lat: coords[1],
+            lon: coords[0],
+            name: feature.properties.name ||
+              feature.properties.street ||
+              q
+          };
+        }
+      }
+    } catch (e) {
+      console.log('Segunda búsqueda no disponible');
+    }
+  }
+
+  if (!found) {
+    statusBox.textContent =
+      'No encontramos esa dirección. Probá con otra calle o altura.';
+    return;
+  }
+
+  const point = [
+    Number(found.lat),
+    Number(found.lon)
+  ];
+
+  map.setView(point, 18);
+
+  L.marker(point)
+    .addTo(map)
+    .bindPopup(found.name)
+    .openPopup();
+
+  statusBox.textContent =
+    'Dirección encontrada. Revisá su ubicación en el mapa.';
+    }
   </script>
 </body>
 </html>
