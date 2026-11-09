@@ -7,7 +7,6 @@
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
   <!-- Leaflet Routing Machine CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
 
@@ -63,21 +62,19 @@
 <body>
 
   <div id="control-panel">
-    <input type="text" id="address" placeholder="Ej: San Martín 500" />
+    <input type="text" id="address" placeholder="Ej: Don Bosco 2295" />
     <button onclick="searchAddress()">Buscar y Navegar</button>
-    <span id="statusBox">Escribí una calle y una altura en Formosa.</span>
+    <span id="statusBox">Escribí una calle y altura en Formosa.</span>
   </div>
 
   <div id="map"></div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
   <!-- Leaflet Routing Machine JS -->
   <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
 
   <script>
-    // 1. Inicializar el mapa centrado en Formosa Capital por defecto
     const map = L.map('map').setView([-26.184, -58.175], 14);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -87,14 +84,74 @@
 
     let routingControl = null;
 
-    // 2. Función principal de búsqueda y ruteo
+    // Función auxiliar para consultar Nominatim
+    async function queryNominatim(queryStr) {
+      try {
+        const url = new URL('https://nominatim.openstreetmap.org/search');
+        url.searchParams.set('format', 'jsonv2');
+        url.searchParams.set('q', queryStr);
+        url.searchParams.set('countrycodes', 'ar');
+        // Encuadre aproximado de Formosa Capital para acotar la búsqueda
+        url.searchParams.set('viewbox', '-58.30,-26.10,-58.10,-26.25');
+        url.searchParams.set('bounded', '0');
+        url.searchParams.set('limit', '3');
+
+        const response = await fetch(url, {
+          headers: { 'Accept-Language': 'es' }
+        });
+
+        if (response.ok) {
+          const results = await response.json();
+          if (results.length > 0) {
+            return {
+              lat: Number(results[0].lat),
+              lon: Number(results[0].lon),
+              name: results[0].display_name
+            };
+          }
+        }
+      } catch (e) {
+        console.error('Error en Nominatim:', e);
+      }
+      return null;
+    }
+
+    // Función auxiliar para consultar Photon
+    async function queryPhoton(queryStr) {
+      try {
+        const url = new URL('https://photon.komoot.io/api/');
+        url.searchParams.set('q', queryStr);
+        url.searchParams.set('lat', '-26.184');
+        url.searchParams.set('lon', '-58.175');
+        url.searchParams.set('limit', '3');
+        url.searchParams.set('lang', 'es');
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.features && data.features.length > 0) {
+            const feature = data.features[0];
+            const coords = feature.geometry.coordinates;
+            return {
+              lat: Number(coords[1]),
+              lon: Number(coords[0]),
+              name: feature.properties.name || feature.properties.street || queryStr
+            };
+          }
+        }
+      } catch (e) {
+        console.error('Error en Photon:', e);
+      }
+      return null;
+    }
+
     async function searchAddress() {
       const inputEl = document.getElementById('address');
       const statusBox = document.getElementById('statusBox');
 
-      const q = inputEl.value.trim();
+      const rawInput = inputEl.value.trim();
 
-      if (!q) {
+      if (!rawInput) {
         statusBox.textContent = 'Escribí una calle y una altura.';
         return;
       }
@@ -103,75 +160,38 @@
 
       let found = null;
 
-      // Primera fuente: OpenStreetMap (Nominatim)
-      try {
-        const url = new URL('https://nominatim.openstreetmap.org/search');
-        url.searchParams.set('format', 'jsonv2');
-        url.searchParams.set('q', q + ', Formosa, Argentina');
-        url.searchParams.set('countrycodes', 'ar');
-        url.searchParams.set('limit', '1');
-
-        const response = await fetch(url, {
-          headers: { 
-            'Accept-Language': 'es',
-            'User-Agent': 'AppNavegacionFormosa/1.0'
-          }
-        });
-
-        if (response.ok) {
-          const results = await response.json();
-          if (results.length > 0) {
-            const r = results[0];
-            found = {
-              lat: Number(r.lat),
-              lon: Number(r.lon),
-              name: r.display_name
-            };
-          }
-        }
-      } catch (e) {
-        console.log('Primera búsqueda no disponible', e);
-      }
-
-      // Segunda fuente: Photon (si la primera falló)
+      // Intentar 1: Búsqueda exacta (ej. "Don Bosco 2295, Formosa, Argentina")
+      found = await queryNominatim(rawInput + ', Formosa, Argentina');
       if (!found) {
-        try {
-          const url = new URL('https://photon.komoot.io/api/');
-          url.searchParams.set('q', q + ', Formosa, Argentina');
-          url.searchParams.set('lat', '-26.184');
-          url.searchParams.set('lon', '-58.175');
-          url.searchParams.set('limit', '1');
-          url.searchParams.set('lang', 'es');
+        found = await queryPhoton(rawInput + ', Formosa, Argentina');
+      }
 
-          const response = await fetch(url);
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.features && data.features.length > 0) {
-              const feature = data.features[0];
-              const coords = feature.geometry.coordinates;
-
-              found = {
-                lat: Number(coords[1]),
-                lon: Number(coords[0]),
-                name: feature.properties.name || feature.properties.street || q
-              };
-            }
+      // Intentar 2: Si tiene números y falló, probar quitando la altura (ej. "Don Bosco, Formosa, Argentina")
+      if (!found) {
+        const onlyStreet = rawInput.replace(/\d+/g, '').trim();
+        if (onlyStreet && onlyStreet !== rawInput) {
+          statusBox.textContent = 'Altura exacta no hallada. Ubicando calle...';
+          found = await queryNominatim(onlyStreet + ', Formosa, Argentina');
+          if (!found) {
+            found = await queryPhoton(onlyStreet + ', Formosa, Argentina');
           }
-        } catch (e) {
-          console.log('Segunda búsqueda no disponible', e);
         }
       }
 
-      // Validar si se encontró
+      // Intentar 3: Probar agregando la palabra "Avenida" o "Calle" si aún no encuentra
+      if (!found) {
+        const streetOnly = rawInput.replace(/\d+/g, '').trim();
+        found = await queryNominatim('Avenida ' + streetOnly + ', Formosa, Argentina');
+      }
+
+      // Validar si encontramos coordenadas válidas
       if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
-        statusBox.textContent = 'No encontramos esa dirección. Probá con otra.';
+        statusBox.textContent = 'No encontramos esa dirección. Probá escribir solo el nombre de la calle.';
         return;
       }
 
-      statusBox.textContent = 'Obteniendo tu ubicación actual para trazar la ruta...';
+      statusBox.textContent = 'Obteniendo tu ubicación GPS para trazar la ruta...';
 
-      // 3. Obtener ubicación actual del usuario por GPS y trazar la ruta
       if (!navigator.geolocation) {
         alert('Tu navegador no soporta geolocalización.');
         return;
@@ -182,18 +202,16 @@
           const userLat = position.coords.latitude;
           const userLon = position.coords.longitude;
 
-          statusBox.textContent = '¡Ruta trazada hacia el destino!';
+          statusBox.textContent = 'Ruta trazada hacia la zona de ' + rawInput;
 
-          // Si ya existía una ruta anterior, la removemos del mapa
           if (routingControl) {
             map.removeControl(routingControl);
           }
 
-          // Crear la ruta usando Leaflet Routing Machine
           routingControl = L.Routing.control({
             waypoints: [
-              L.latLng(userLat, userLon),     // Origen (Tu posición GPS)
-              L.latLng(found.lat, found.lon)  // Destino (Dirección buscada)
+              L.latLng(userLat, userLon),
+              L.latLng(found.lat, found.lon)
             ],
             routeWhileDragging: false,
             language: 'es',
@@ -203,13 +221,13 @@
               styles: [{ color: '#007bff', opacity: 0.8, weight: 6 }]
             }
           }).addTo(map);
-
         },
         (error) => {
-          statusBox.textContent = 'No se pudo obtener tu ubicación GPS.';
-          console.error(error);
+          statusBox.textContent = 'Dirección ubicada, pero no pudimos obtener tu GPS.';
+          map.setView([found.lat, found.lon], 16);
+          L.marker([found.lat, found.lon]).addTo(map).bindPopup(found.name).openPopup();
         },
-        { enableHighAccuracy: true }
+        { enableHighAccuracy: true, timeout: 10000 }
       );
     }
   </script>
