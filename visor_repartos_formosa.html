@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#10251f">
+  <title>Visor de Repartos · Formosa</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root { --bg:#10251f; --panel:#17362d; --accent:#f0b84b; --ink:#f6f4ed; --muted:#c2d2ca; }
+    * { box-sizing:border-box; }
+    html,body { margin:0; height:100%; font-family:system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); }
+    body { display:flex; flex-direction:column; }
+    header { padding:12px 14px 10px; background:var(--bg); }
+    h1 { font-size:18px; margin:0 0 3px; letter-spacing:.2px; }
+    .sub { color:var(--muted); font-size:12px; }
+    .controls { padding:10px 12px; background:var(--panel); display:grid; gap:8px; }
+    .search { display:flex; gap:7px; }
+    input { min-width:0; flex:1; border:1px solid #527568; border-radius:10px; padding:11px 12px; font-size:15px; background:#f8faf8; color:#15251f; }
+    button { border:0; border-radius:10px; padding:10px 12px; font-weight:700; font-size:14px; background:var(--accent); color:#1c261f; }
+    button.secondary { background:#dce9e2; }
+    .actions { display:flex; gap:7px; flex-wrap:wrap; }
+    .actions button { flex:1; min-width:120px; }
+    #status { font-size:12px; color:var(--muted); min-height:16px; }
+    #map { flex:1; min-height:280px; width:100%; background:#dce5df; }
+    footer { background:var(--bg); color:var(--muted); font-size:11px; padding:7px 12px; }
+    .leaflet-control-layers { border-radius:10px !important; }
+    .leaflet-popup-content { font-size:14px; }
+    .gps-dot { width:18px; height:18px; border-radius:50%; background:#1685ff; border:3px solid white; box-shadow:0 1px 7px #333; }
+    @media (min-width:700px) { body { max-width:900px; margin:auto; height:100dvh; border-left:1px solid #315448; border-right:1px solid #315448; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🧭 Visor de Repartos · Formosa</h1>
+    <div class="sub">Prueba inicial · parcelas, manzanas y ubicación GPS</div>
+  </header>
+  <section class="controls">
+    <div class="search">
+      <input id="address" type="search" placeholder="Buscar calle y número (ej. 25 de Mayo 123)">
+      <button id="searchBtn">Buscar</button>
+    </div>
+    <div class="actions">
+      <button id="locateBtn">📍 Activar puntito azul</button>
+      <button id="stopBtn" class="secondary">Pausar GPS</button>
+    </div>
+    <div id="status">Mapa centrado en Formosa Capital. Activá el GPS cuando quieras compartir tu ubicación con este visor.</div>
+  </section>
+  <main id="map"></main>
+  <footer>Cartografía catastral: IDEF / Dirección General de Catastro Territorial. Base de calles: OpenStreetMap. La información es orientativa y debe verificarse con Catastro.</footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const statusBox = document.getElementById('status');
+    const map = L.map('map', { zoomControl: true }).setView([-26.184, -58.175], 14);
+
+    const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 20, attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // Capas publicadas en el catálogo WMS de IDEF Formosa.
+    const wmsUrl = 'https://idef.formosa.gob.ar/servicios/wms';
+    function cadastralLayer(name, title) {
+      const layer = L.tileLayer.wms(wmsUrl, {
+        layers: name, format: 'image/png', transparent: true,
+        version: '1.1.1', opacity: 0.88, tiled: true
+      });
+      layer.on('tileerror', () => {
+        statusBox.textContent = 'El servidor catastral no respondió. El mapa base y el GPS siguen disponibles; probaremos el servicio de Catastro cuando vuelva a responder.';
+      });
+      return layer;
+    }
+    const blocks = cadastralLayer('dgct:cat_prov_manzanas', 'Manzanas');
+    const parcels = cadastralLayer('dgct:dgct_prov_parurbanas', 'Parcelas urbanas');
+    const roadNames = cadastralLayer('dgct:prov_calles', 'Calles catastrales');
+    const overlays = {
+      'Manzanas': blocks,
+      'Parcelas urbanas': parcels,
+      'Calles catastrales': roadNames
+    };
+    L.control.layers({ 'Calles y mapa base': streets }, overlays, { collapsed: false }).addTo(map);
+    blocks.addTo(map);
+    parcels.addTo(map);
+
+    let watchId = null, gpsMarker = null, accuracyCircle = null;
+    const gpsIcon = L.divIcon({ className:'', html:'<div class="gps-dot"></div>', iconSize:[18,18], iconAnchor:[9,9] });
+
+    function showPosition(pos) {
+      const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy || 25;
+      if (!gpsMarker) {
+        gpsMarker = L.marker([lat,lon], {icon:gpsIcon, zIndexOffset:1000}).addTo(map).bindPopup('Tu ubicación GPS');
+        accuracyCircle = L.circle([lat,lon], {radius:accuracy, color:'#1685ff', weight:1, fillOpacity:.08}).addTo(map);
+        map.setView([lat,lon], 17);
+      } else {
+        gpsMarker.setLatLng([lat,lon]);
+        accuracyCircle.setLatLng([lat,lon]).setRadius(accuracy);
+      }
+      statusBox.textContent = `GPS activo · precisión aproximada: ${Math.round(accuracy)} m. El puntito azul se actualizará mientras te movés.`;
+    }
+
+    document.getElementById('locateBtn').addEventListener('click', () => {
+      if (!('geolocation' in navigator)) {
+        statusBox.textContent = 'Este navegador no ofrece geolocalización. Probá con Chrome y permisos de ubicación activados.';
+        return;
+      }
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      statusBox.textContent = 'Solicitando permiso de ubicación…';
+      watchId = navigator.geolocation.watchPosition(showPosition, err => {
+        const messages = {
+          1:'Permiso de ubicación denegado. Activá la ubicación para este sitio en Chrome.',
+          2:'No se pudo obtener la ubicación. Revisá el GPS y la señal.',
+          3:'Se agotó el tiempo de espera del GPS. Volvé a intentarlo al aire libre.'
+        };
+        statusBox.textContent = messages[err.code] || 'No se pudo obtener la ubicación.';
+      }, { enableHighAccuracy:true, maximumAge:3000, timeout:20000 });
+    });
+    document.getElementById('stopBtn').addEventListener('click', () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      statusBox.textContent = 'GPS pausado. Tu ubicación ya no se actualiza en este visor.';
+    });
+
+    async function searchAddress() {
+      const q = document.getElementById('address').value.trim();
+      if (!q) { statusBox.textContent = 'Escribí una calle y una altura para buscar.'; return; }
+      statusBox.textContent = 'Buscando dirección…';
+      try {
+        const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&country=Argentina&city=Formosa&q=' + encodeURIComponent(q);
+        const response = await fetch(url, { headers:{'Accept-Language':'es'} });
+        if (!response.ok) throw new Error('Servicio de búsqueda no disponible');
+        const results = await response.json();
+        if (!results.length) { statusBox.textContent = 'No encontré esa dirección. Probá con el nombre de la calle y la altura.'; return; }
+        const p = results[0], point = [Number(p.lat), Number(p.lon)];
+        map.setView(point, 18);
+        L.marker(point).addTo(map).bindPopup(p.display_name).openPopup();
+        statusBox.textContent = 'Dirección encontrada. La ubicación puede ser aproximada; verificá la parcela en las capas catastrales.';
+      } catch (e) {
+        statusBox.textContent = 'No se pudo buscar la dirección en este momento. Probá más tarde.';
+      }
+    }
+    document.getElementById('searchBtn').addEventListener('click', searchAddress);
+    document.getElementById('address').addEventListener('keydown', e => { if (e.key === 'Enter') searchAddress(); });
+
+    map.on('click', e => {
+      statusBox.textContent = `Punto seleccionado: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}. Para consultar datos parcelarios necesitamos que responda el servicio WMS.`;
+    });
+  </script>
+</body>
+</html>
