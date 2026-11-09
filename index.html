@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Logística Formosa - Buscador y Navegador</title>
+  <title>Navegador Logístico - Formosa</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -28,30 +28,24 @@
       align-items: center;
     }
     input[type="text"] {
-      padding: 8px;
-      font-size: 14px;
-      width: 260px;
+      padding: 10px;
+      font-size: 15px;
+      width: 280px;
       border: 1px solid #ccc;
       border-radius: 4px;
     }
     button {
-      padding: 8px 15px;
-      background-color: #007bff;
+      padding: 10px 18px;
+      background-color: #28a745;
       color: white;
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: bold;
     }
     button:hover {
-      background-color: #0056b3;
-    }
-    .btn-nav {
-      background-color: #28a745 !important;
-    }
-    .btn-nav:hover {
-      background-color: #218838 !important;
+      background-color: #218838;
     }
     #statusBox {
       font-size: 14px;
@@ -66,15 +60,16 @@
     }
     .leaflet-popup-content-wrapper {
       text-align: center;
+      padding: 5px;
     }
   </style>
 </head>
 <body>
 
   <div id="control-panel">
-    <input type="text" id="address" placeholder="Ej: Don Bosco 2295 o Don Bosco y Alvear" />
-    <button onclick="searchAddress()">Buscar Dirección</button>
-    <div id="statusBox">Escribí una calle y altura (o intersección) en Formosa.</div>
+    <input type="text" id="address" placeholder="Ej: Don Bosco 2295, Formosa" />
+    <button onclick="navegarDireccion()">Navegar Dirección</button>
+    <div id="statusBox">Escribí la dirección exacta o esquina y hacé clic en Navegar.</div>
   </div>
 
   <div id="map"></div>
@@ -83,7 +78,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // Inicializar mapa en Formosa Capital
+    // Inicializar mapa centrado en Formosa Capital
     const map = L.map('map').setView([-26.184, -58.175], 14);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -93,100 +88,34 @@
 
     let currentMarker = null;
 
-    async function searchAddress() {
+    function navegarDireccion() {
       const inputEl = document.getElementById('address');
       const statusBox = document.getElementById('statusBox');
       const rawInput = inputEl.value.trim();
 
       if (!rawInput) {
-        statusBox.textContent = 'Escribí una calle y una altura.';
+        statusBox.textContent = 'Por favor, escribí una dirección.';
         return;
       }
 
-      statusBox.textContent = 'Buscando en registros oficiales de Formosa...';
-
-      let found = null;
-
-      // 1. Intentar con Georef Argentina (IGN)
-      try {
-        const url = new URL('https://apis.datos.gob.ar/georef/api/direcciones');
-        url.searchParams.set('direccion', rawInput);
-        url.searchParams.set('provincia', 'Formosa');
-        url.searchParams.set('max', '1');
-
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.direcciones && data.direcciones.length > 0) {
-            const d = data.direcciones[0];
-            found = {
-              lat: d.ubicacion.lat,
-              lon: d.ubicacion.lon,
-              name: `${d.calle.nombre} ${d.altura.valor || ''}, Formosa`
-            };
-          }
-        }
-      } catch (e) {
-        console.error('Error Georef:', e);
+      // Asegurar que la búsqueda siempre incluya Formosa para mayor precisión
+      let queryCompleta = rawInput;
+      if (!queryCompleta.toLowerCase().includes('formosa')) {
+        queryCompleta += ', Formosa, Argentina';
       }
 
-      // 2. Si falla, buscar por nombre de calle genérica o intersección con Photon
-      if (!found) {
-        try {
-          const urlPhoton = new URL('https://photon.komoot.io/api/');
-          urlPhoton.searchParams.set('q', rawInput + ', Formosa, Argentina');
-          urlPhoton.searchParams.set('lat', '-26.184');
-          urlPhoton.searchParams.set('lon', '-58.175');
-          urlPhoton.searchParams.set('limit', '1');
-          urlPhoton.searchParams.set('lang', 'es');
+      statusBox.textContent = 'Generando ruta hacia: ' + queryCompleta;
 
-          const response = await fetch(urlPhoton);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.features && data.features.length > 0) {
-              const f = data.features[0];
-              found = {
-                lat: f.geometry.coordinates[1],
-                lon: f.geometry.coordinates[0],
-                name: f.properties.name || rawInput
-              };
-            }
-          }
-        } catch (e) {
-          console.error('Error Photon:', e);
-        }
-      }
+      // Crear enlace directo a Google Maps con la consulta exacta
+      // Google Maps resuelve automáticamente las alturas (como Don Bosco 2295) usando su base de datos satelital y catastral
+      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryCompleta)}`;
+      const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(queryCompleta)}&navigate=yes`;
 
-      if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
-        statusBox.textContent = 'No se encontró. Probá escribir la esquina (Ej: Don Bosco y Pringles).';
-        return;
-      }
+      // Mensaje de éxito con botones directos
+      statusBox.innerHTML = `¡Listo! Elegí tu aplicación de navegación para ir a: <b>${rawInput}</b>`;
 
-      // Centrar mapa y poner marcador
-      map.setView([found.lat, found.lon], 17);
-
-      if (currentMarker) {
-        map.removeLayer(currentMarker);
-      }
-
-      // Crear enlaces directos a Google Maps y Waze para navegación vehicular real
-      const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${found.lat},${found.lon}`;
-      const wazeUrl = `https://waze.com/ul?ll=${found.lat},${found.lon}&navigate=yes`;
-
-      const popupContent = `
-        <div style="font-size: 13px;">
-          <b>${found.name}</b><br><br>
-          <a href="${googleMapsUrl}" target="_blank" style="display:block; margin-bottom:5px; padding:6px 10px; background:#4285F4; color:#fff; text-decoration:none; border-radius:4px;">🚗 Abrir en Google Maps</a>
-          <a href="${wazeUrl}" target="_blank" style="display:block; padding:6px 10px; background:#33ccff; color:#000; text-decoration:none; border-radius:4px;">🧭 Navegar con Waze</a>
-        </div>
-      `;
-
-      currentMarker = L.marker([found.lat, found.lon])
-        .addTo(map)
-        .bindPopup(popupContent)
-        .openPopup();
-
-      statusBox.textContent = '¡Dirección encontrada! Hacé clic en el marcador para navegar.';
+      // Abrir automáticamente Google Maps en una nueva pestaña (o app si estás en celular)
+      window.open(googleMapsUrl, '_blank');
     }
   </script>
 </body>
