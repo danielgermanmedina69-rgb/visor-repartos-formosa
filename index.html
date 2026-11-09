@@ -121,7 +121,8 @@
       statusBox.textContent = 'GPS pausado. Tu ubicación ya no se actualiza en este visor.';
     });
 
-    async function searchAddress() {
+    
+  async function searchAddress() {
   const q = document.getElementById('address').value.trim();
 
   if (!q) {
@@ -129,7 +130,7 @@
     return;
   }
 
-  statusBox.textContent = 'Buscando dirección en Formosa…';
+  statusBox.textContent = 'Buscando dirección en Formosa...';
 
   let found = null;
 
@@ -151,11 +152,13 @@
     if (response.ok) {
       const results = await response.json();
 
-      if (results.length) {
+      if (results.length > 0) {
+        const r = results[0];
+
         found = {
-          lat: results[0].lat,
-          lon: results[0].lon,
-          name: results[0].display_name
+          lat: Number(r.lat),
+          lon: Number(r.lon),
+          name: r.display_name
         };
       }
     }
@@ -166,7 +169,9 @@
   // Segunda fuente: Photon
   if (!found) {
     try {
-      const url = new URL('https://photon.komoot.io/api/');
+      const url = new URL(
+        'https://photon.komoot.io/api/'
+      );
 
       url.searchParams.set('q', q + ', Formosa, Argentina');
       url.searchParams.set('lat', '-26.184');
@@ -179,16 +184,16 @@
       if (response.ok) {
         const data = await response.json();
 
-        if (data.features.length) {
+        if (data.features.length > 0) {
           const feature = data.features[0];
           const coords = feature.geometry.coordinates;
 
           found = {
-            lat: coords[1],
-            lon: coords[0],
+            lat: Number(coords[1]),
+            lon: Number(coords[0]),
             name: feature.properties.name ||
-              feature.properties.street ||
-              q
+                  feature.properties.street ||
+                  q
           };
         }
       }
@@ -197,27 +202,31 @@
     }
   }
 
-  if (!found) {
+  // Mostrar resultado
+  if (!found ||
+      !Number.isFinite(found.lat) ||
+      !Number.isFinite(found.lon)) {
     statusBox.textContent =
-      'No encontramos esa dirección. Probá con otra calle o altura.';
+      'No encontramos esa dirección. Probá con otra calle y altura.';
     return;
   }
 
-  const point = [
-    Number(found.lat),
-    Number(found.lon)
-  ];
+  const point = [found.lat, found.lon];
 
   map.setView(point, 18);
 
-  L.marker(point)
+  if (window.searchMarker) {
+    map.removeLayer(window.searchMarker);
+  }
+
+  window.searchMarker = L.marker(point)
     .addTo(map)
     .bindPopup(found.name)
     .openPopup();
 
   statusBox.textContent =
-    'Dirección encontrada. Revisá su ubicación en el mapa.';
-    }
+    'Dirección encontrada. Verificá la parcela en el mapa.';
+  }
   </script>
 </body>
 </html>
