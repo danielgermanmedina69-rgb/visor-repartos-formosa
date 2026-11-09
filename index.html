@@ -84,39 +84,7 @@
 
     let routingControl = null;
 
-    // Función auxiliar para consultar Nominatim
-    async function queryNominatim(queryStr) {
-      try {
-        const url = new URL('https://nominatim.openstreetmap.org/search');
-        url.searchParams.set('format', 'jsonv2');
-        url.searchParams.set('q', queryStr);
-        url.searchParams.set('countrycodes', 'ar');
-        // Encuadre aproximado de Formosa Capital para acotar la búsqueda
-        url.searchParams.set('viewbox', '-58.30,-26.10,-58.10,-26.25');
-        url.searchParams.set('bounded', '0');
-        url.searchParams.set('limit', '3');
-
-        const response = await fetch(url, {
-          headers: { 'Accept-Language': 'es' }
-        });
-
-        if (response.ok) {
-          const results = await response.json();
-          if (results.length > 0) {
-            return {
-              lat: Number(results[0].lat),
-              lon: Number(results[0].lon),
-              name: results[0].display_name
-            };
-          }
-        }
-      } catch (e) {
-        console.error('Error en Nominatim:', e);
-      }
-      return null;
-    }
-
-    // Función auxiliar para consultar Photon
+    // Búsqueda usando Photon (muy veloz y tolerante con calles de Argentina)
     async function queryPhoton(queryStr) {
       try {
         const url = new URL('https://photon.komoot.io/api/');
@@ -145,6 +113,35 @@
       return null;
     }
 
+    // Búsqueda alternativa usando Nominatim (sin cabeceras prohibidas)
+    async function queryNominatim(queryStr) {
+      try {
+        const url = new URL('https://nominatim.openstreetmap.org/search');
+        url.searchParams.set('format', 'jsonv2');
+        url.searchParams.set('q', queryStr);
+        url.searchParams.set('countrycodes', 'ar');
+        url.searchParams.set('limit', '3');
+
+        const response = await fetch(url, {
+          headers: { 'Accept-Language': 'es' }
+        });
+
+        if (response.ok) {
+          const results = await response.json();
+          if (results.length > 0) {
+            return {
+              lat: Number(results[0].lat),
+              lon: Number(results[0].lon),
+              name: results[0].display_name
+            };
+          }
+        }
+      } catch (e) {
+        console.error('Error en Nominatim:', e);
+      }
+      return null;
+    }
+
     async function searchAddress() {
       const inputEl = document.getElementById('address');
       const statusBox = document.getElementById('statusBox');
@@ -160,31 +157,27 @@
 
       let found = null;
 
-      // Intentar 1: Búsqueda exacta (ej. "Don Bosco 2295, Formosa, Argentina")
-      found = await queryNominatim(rawInput + ', Formosa, Argentina');
+      // 1. Probar búsqueda completa con Photon primero
+      found = await queryPhoton(rawInput + ', Formosa, Argentina');
+      
+      // 2. Si no encuentra, probar con Nominatim
       if (!found) {
-        found = await queryPhoton(rawInput + ', Formosa, Argentina');
+        found = await queryNominatim(rawInput + ', Formosa, Argentina');
       }
 
-      // Intentar 2: Si tiene números y falló, probar quitando la altura (ej. "Don Bosco, Formosa, Argentina")
+      // 3. Si aún no encuentra, quitar los números y buscar solo la calle
       if (!found) {
         const onlyStreet = rawInput.replace(/\d+/g, '').trim();
         if (onlyStreet && onlyStreet !== rawInput) {
-          statusBox.textContent = 'Altura exacta no hallada. Ubicando calle...';
-          found = await queryNominatim(onlyStreet + ', Formosa, Argentina');
+          statusBox.textContent = 'Altura exacta no hallada. Buscando la calle...';
+          found = await queryPhoton(onlyStreet + ', Formosa, Argentina');
           if (!found) {
-            found = await queryPhoton(onlyStreet + ', Formosa, Argentina');
+            found = await queryNominatim(onlyStreet + ', Formosa, Argentina');
           }
         }
       }
 
-      // Intentar 3: Probar agregando la palabra "Avenida" o "Calle" si aún no encuentra
-      if (!found) {
-        const streetOnly = rawInput.replace(/\d+/g, '').trim();
-        found = await queryNominatim('Avenida ' + streetOnly + ', Formosa, Argentina');
-      }
-
-      // Validar si encontramos coordenadas válidas
+      // Validar si se encontró la ubicación
       if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
         statusBox.textContent = 'No encontramos esa dirección. Probá escribir solo el nombre de la calle.';
         return;
@@ -202,7 +195,7 @@
           const userLat = position.coords.latitude;
           const userLon = position.coords.longitude;
 
-          statusBox.textContent = 'Ruta trazada hacia la zona de ' + rawInput;
+          statusBox.textContent = '¡Ruta trazada hacia el destino!';
 
           if (routingControl) {
             map.removeControl(routingControl);
@@ -223,7 +216,7 @@
           }).addTo(map);
         },
         (error) => {
-          statusBox.textContent = 'Dirección ubicada, pero no pudimos obtener tu GPS.';
+          statusBox.textContent = 'Dirección ubicada en el mapa (GPS no disponible).';
           map.setView([found.lat, found.lon], 16);
           L.marker([found.lat, found.lon]).addTo(map).bindPopup(found.name).openPopup();
         },
