@@ -14,7 +14,9 @@
     header { padding:12px 14px 10px; background:var(--bg); }
     h1 { font-size:18px; margin:0 0 3px; letter-spacing:.2px; }
     .sub { color:var(--muted); font-size:12px; }
-    .controls { padding:10px 12px; background:var(--panel); display:grid; gap:8px; }
+    .controls { padding:10px 12px; background:#1b3d33; display:grid; gap:10px; }
+    .search-group { background:#17362d; border-radius:12px; padding:8px; display:grid; gap:6px; border:1px solid #527568; }
+    .search-label { font-size:11px; color:#a3c1b6; font-weight:700; text-transform:uppercase; }
     .search { display:flex; gap:7px; }
     input { min-width:0; flex:1; border:1px solid #527568; border-radius:10px; padding:11px 12px; font-size:15px; background:#f8faf8; color:#15251f; }
     button { border:0; border-radius:10px; padding:10px 12px; font-weight:700; font-size:14px; background:var(--accent); color:#1c261f; }
@@ -36,15 +38,29 @@
     <div class="sub">Prueba inicial · parcelas, manzanas y ubicación GPS</div>
   </header>
   <section class="controls">
-    <div class="search">
-      <input id="address" type="search" placeholder="Buscar calle y número (ej. 25 de Mayo 123)">
-      <button id="searchBtn">Buscar</button>
+    <!-- Búsqueda de Calles y Alturas -->
+    <div class="search-group">
+      <div class="search-label">📍 Navegación exacta (Calle y Altura)</div>
+      <div class="search">
+        <input id="strictAddress" type="search" placeholder="Ej. San Martin 750, Formosa">
+        <button id="searchStrictBtn">Ir a Calle</button>
+      </div>
     </div>
+
+    <!-- Búsqueda General / Barrios -->
+    <div class="search-group">
+      <div class="search-label">🏙️ Búsqueda General / Barrios</div>
+      <div class="search">
+        <input id="generalAddress" type="search" placeholder="Ej. Barrio San Francisco">
+        <button id="searchGeneralBtn">Buscar Zona</button>
+      </div>
+    </div>
+
     <div class="actions">
       <button id="locateBtn">📍 Activar puntito azul</button>
       <button id="stopBtn" class="secondary">Pausar GPS</button>
     </div>
-    <div id="status">Mapa centrado en Formosa Capital. Activá el GPS cuando quieras compartir tu ubicación con este visor.</div>
+    <div id="status">Mapa centrado en Formosa Capital. Activá el GPS para iniciar la navegación.</div>
   </section>
   <main id="map"></main>
   <footer>Cartografía catastral: IDEF / Dirección General de Catastro Territorial. Base de calles: OpenStreetMap. La información es orientativa y debe verificarse con Catastro.</footer>
@@ -58,7 +74,6 @@
       maxZoom: 20, attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // Capas publicadas en el catálogo WMS de IDEF Formosa.
     const wmsUrl = 'https://idef.formosa.gob.ar/servicios/wms';
     function cadastralLayer(name, title) {
       const layer = L.tileLayer.wms(wmsUrl, {
@@ -66,7 +81,7 @@
         version: '1.1.1', opacity: 0.88, tiled: true
       });
       layer.on('tileerror', () => {
-        statusBox.textContent = 'El servidor catastral no respondió. El mapa base y el GPS siguen disponibles; probaremos el servicio de Catastro cuando vuelva a responder.';
+        statusBox.textContent = 'El servidor catastral no respondió. El mapa base y el GPS siguen disponibles.';
       });
       return layer;
     }
@@ -98,9 +113,8 @@
         gpsMarker.setLatLng([lat,lon]);
         accuracyCircle.setLatLng([lat,lon]).setRadius(accuracy);
       }
-      statusBox.textContent = `GPS activo · precisión aproximada: ${Math.round(accuracy)} m. El puntito azul se actualizará mientras te movés.`;
+      statusBox.textContent = `GPS activo · precisión: ${Math.round(accuracy)} m.`;
 
-      // Si ya hay una búsqueda activa, actualizar la ruta en tiempo real al moverse
       if (window.lastTarget) {
         getRoute(currentCoords, window.lastTarget);
       }
@@ -108,28 +122,22 @@
 
     document.getElementById('locateBtn').addEventListener('click', () => {
       if (!('geolocation' in navigator)) {
-        statusBox.textContent = 'Este navegador no ofrece geolocalización. Probá con Chrome y permisos de ubicación activados.';
+        statusBox.textContent = 'Geolocalización no disponible.';
         return;
       }
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       statusBox.textContent = 'Solicitando permiso de ubicación…';
       watchId = navigator.geolocation.watchPosition(showPosition, err => {
-        const messages = {
-          1:'Permiso de ubicación denegado. Activá la ubicación para este sitio en Chrome.',
-          2:'No se pudo obtener la ubicación. Revisá el GPS y la señal.',
-          3:'Se agotó el tiempo de espera del GPS. Volvé a intentarlo al aire libre.'
-        };
-        statusBox.textContent = messages[err.code] || 'No se pudo obtener la ubicación.';
+        statusBox.textContent = 'Error al obtener ubicación.';
       }, { enableHighAccuracy:true, maximumAge:3000, timeout:20000 });
     });
 
     document.getElementById('stopBtn').addEventListener('click', () => {
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       watchId = null;
-      statusBox.textContent = 'GPS pausado. Tu ubicación ya no se actualiza en este visor.';
+      statusBox.textContent = 'GPS pausado.';
     });
 
-    // Función para calcular y dibujar la ruta de navegación
     async function getRoute(start, end) {
       try {
         const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
@@ -141,120 +149,77 @@
           const route = data.routes[0];
           const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
           
-          if (routeLayer) {
-            map.removeLayer(routeLayer);
-          }
-          
+          if (routeLayer) map.removeLayer(routeLayer);
           routeLayer = L.polyline(coords, { color: '#1685ff', weight: 5, opacity: 0.8 }).addTo(map);
           
           const distanceKm = (route.distance / 1000).toFixed(1);
           const durationMin = Math.round(route.duration / 60);
-          statusBox.textContent = `Ruta hacia el destino · Distancia: ${distanceKm} km (~${durationMin} min en vehículo).`;
+          statusBox.textContent = `Ruta: ${distanceKm} km (~${durationMin} min).`;
         }
       } catch (e) {
-        console.log('Error al calcular ruta', e);
+        console.log('Error de ruteo', e);
       }
     }
 
-    async function searchAddress() {
-      const q = document.getElementById('address').value.trim();
-
+    // Función unificada de búsqueda con prioridad ajustada
+    async function performSearch(inputId, isStrict) {
+      const q = document.getElementById(inputId).value.trim();
       if (!q) {
-        statusBox.textContent = 'Escribí una calle y una altura.';
+        statusBox.textContent = 'Por favor, ingresá un término de búsqueda.';
         return;
       }
 
-      statusBox.textContent = 'Buscando dirección en Formosa...';
-
+      statusBox.textContent = 'Buscando ubicación...';
       let found = null;
 
-      // Primera fuente: OpenStreetMap
       try {
         const url = new URL('https://nominatim.openstreetmap.org/search');
         url.searchParams.set('format', 'jsonv2');
-        url.searchParams.set('q', q + ', Formosa, Argentina');
+        url.searchParams.set('limit', '1');
         url.searchParams.set('countrycodes', 'ar');
-        url.searchParams.set('limit', '5');
+        // Si es búsqueda estricta, forzamos que incluya el nombre de la ciudad para centrar resultados
+        url.searchParams.set('q', isStrict ? `${q}, Formosa, Argentina` : `${q}, Formosa`);
 
-        const response = await fetch(url, {
-          headers: { 'Accept-Language': 'es' }
-        });
-
+        const response = await fetch(url, { headers: { 'Accept-Language': 'es' } });
         if (response.ok) {
           const results = await response.json();
           if (results.length > 0) {
             const r = results[0];
-            found = {
-              lat: Number(r.lat),
-              lon: Number(r.lon),
-              name: r.display_name
-            };
+            found = { lat: Number(r.lat), lon: Number(r.lon), name: r.display_name };
           }
         }
       } catch (e) {
-        console.log('Primera búsqueda no disponible');
+        console.log('Error en búsqueda OSM', e);
       }
 
-      // Segunda fuente: Photon
       if (!found) {
-        try {
-          const url = new URL('https://photon.komoot.io/api/');
-          url.searchParams.set('q', q + ', Formosa, Argentina');
-          url.searchParams.set('lat', '-26.184');
-          url.searchParams.set('lon', '-58.175');
-          url.searchParams.set('limit', '5');
-          url.searchParams.set('lang', 'es');
-
-          const response = await fetch(url);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.features.length > 0) {
-              const feature = data.features[0];
-              const coords = feature.geometry.coordinates;
-              found = {
-                lat: Number(coords[1]),
-                lon: Number(coords[0]),
-                name: feature.properties.name || feature.properties.street || q
-              };
-            }
-          }
-        } catch (e) {
-          console.log('Segunda búsqueda no disponible');
-        }
-      }
-
-      // Mostrar resultado
-      if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
-        statusBox.textContent = 'No encontramos esa dirección. Probá con otra calle y altura.';
+        statusBox.textContent = 'No se encontró el lugar. Probá con otra descripción.';
         return;
       }
 
       const point = [found.lat, found.lon];
       window.lastTarget = point;
 
-      if (window.searchMarker) {
-        map.removeLayer(window.searchMarker);
-      }
+      if (window.searchMarker) map.removeLayer(window.searchMarker);
+      window.searchMarker = L.marker(point).addTo(map).bindPopup(found.name).openPopup();
 
-      window.searchMarker = L.marker(point)
-        .addTo(map)
-        .bindPopup(found.name)
-        .openPopup();
-
-      // Si tenemos la ubicación GPS activa, trazamos la ruta automáticamente
       if (currentCoords) {
         getRoute(currentCoords, point);
         map.fitBounds(L.latLngBounds([currentCoords, point]), { padding: [50, 50] });
       } else {
-        map.setView(point, 18);
-        statusBox.textContent = 'Dirección encontrada. Activá el GPS para ver la ruta desde tu posición.';
+        map.setView(point, 16);
+        statusBox.textContent = `Destino: ${found.name.split(',')[0]}`;
       }
     }
 
-    // Asociar evento al botón de búsqueda
-    document.getElementById('searchBtn').addEventListener('click', searchAddress);
-    document.getElementById('address').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') searchAddress();
+    document.getElementById('searchStrictBtn').addEventListener('click', () => performSearch('strictAddress', true));
+    document.getElementById('strictAddress').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') performSearch('strictAddress', true);
+    });
+
+    document.getElementById('searchGeneralBtn').addEventListener('click', () => performSearch('generalAddress', false));
+    document.getElementById('generalAddress').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') performSearch('generalAddress', false);
     });
   </script>
 </body>
