@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mapa y Navegador - Formosa</title>
+  <title>Navegador Oficial - Formosa</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -64,7 +64,7 @@
   <div id="control-panel">
     <input type="text" id="address" placeholder="Ej: Don Bosco 2295" />
     <button onclick="searchAddress()">Buscar y Navegar</button>
-    <span id="statusBox">Escribí una calle y altura en Formosa.</span>
+    <span id="statusBox">Escribí calle y altura (Ej: Don Bosco 2295).</span>
   </div>
 
   <div id="map"></div>
@@ -84,68 +84,9 @@
 
     let routingControl = null;
 
-    // Búsqueda usando Photon (muy veloz y tolerante con calles de Argentina)
-    async function queryPhoton(queryStr) {
-      try {
-        const url = new URL('https://photon.komoot.io/api/');
-        url.searchParams.set('q', queryStr);
-        url.searchParams.set('lat', '-26.184');
-        url.searchParams.set('lon', '-58.175');
-        url.searchParams.set('limit', '3');
-        url.searchParams.set('lang', 'es');
-
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.features && data.features.length > 0) {
-            const feature = data.features[0];
-            const coords = feature.geometry.coordinates;
-            return {
-              lat: Number(coords[1]),
-              lon: Number(coords[0]),
-              name: feature.properties.name || feature.properties.street || queryStr
-            };
-          }
-        }
-      } catch (e) {
-        console.error('Error en Photon:', e);
-      }
-      return null;
-    }
-
-    // Búsqueda alternativa usando Nominatim (sin cabeceras prohibidas)
-    async function queryNominatim(queryStr) {
-      try {
-        const url = new URL('https://nominatim.openstreetmap.org/search');
-        url.searchParams.set('format', 'jsonv2');
-        url.searchParams.set('q', queryStr);
-        url.searchParams.set('countrycodes', 'ar');
-        url.searchParams.set('limit', '3');
-
-        const response = await fetch(url, {
-          headers: { 'Accept-Language': 'es' }
-        });
-
-        if (response.ok) {
-          const results = await response.json();
-          if (results.length > 0) {
-            return {
-              lat: Number(results[0].lat),
-              lon: Number(results[0].lon),
-              name: results[0].display_name
-            };
-          }
-        }
-      } catch (e) {
-        console.error('Error en Nominatim:', e);
-      }
-      return null;
-    }
-
     async function searchAddress() {
       const inputEl = document.getElementById('address');
       const statusBox = document.getElementById('statusBox');
-
       const rawInput = inputEl.value.trim();
 
       if (!rawInput) {
@@ -153,33 +94,67 @@
         return;
       }
 
-      statusBox.textContent = 'Buscando dirección en Formosa...';
+      statusBox.textContent = 'Buscando dirección oficial en Formosa...';
 
       let found = null;
 
-      // 1. Probar búsqueda completa con Photon primero
-      found = await queryPhoton(rawInput + ', Formosa, Argentina');
-      
-      // 2. Si no encuentra, probar con Nominatim
-      if (!found) {
-        found = await queryNominatim(rawInput + ', Formosa, Argentina');
+      // Usar el servicio oficial de geocodificación de ARGENMAP (IGN Argentina)
+      try {
+        const url = new URL('https://apis.datos.gob.ar/georef/api/direcciones');
+        url.searchParams.set('direccion', rawInput);
+        url.searchParams.set('provincia', 'Formosa');
+        url.searchParams.set('departamento', 'Formosa');
+        url.searchParams.set('max', '1');
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.direcciones && data.direcciones.length > 0) {
+            const d = data.direcciones[0];
+            found = {
+              lat: d.ubicacion.lat,
+              lon: d.ubicacion.lon,
+              name: `${d.calle.nombre} ${d.altura.valor}, ${d.localidad.nombre}, Formosa`
+            };
+          }
+        }
+      } catch (e) {
+        console.error('Error en API Georef Argentina:', e);
       }
 
-      // 3. Si aún no encuentra, quitar los números y buscar solo la calle
+      // Si Georef no la encuentra (por ejemplo, si falta el número exacto), intentamos con una búsqueda aproximada de calles del IGN
       if (!found) {
-        const onlyStreet = rawInput.replace(/\d+/g, '').trim();
-        if (onlyStreet && onlyStreet !== rawInput) {
-          statusBox.textContent = 'Altura exacta no hallada. Buscando la calle...';
-          found = await queryPhoton(onlyStreet + ', Formosa, Argentina');
-          if (!found) {
-            found = await queryNominatim(onlyStreet + ', Formosa, Argentina');
+        try {
+          const urlCalle = new URL('https://apis.datos.gob.ar/georef/api/calles');
+          // Limpiamos los números para buscar la calle genérica
+          const soloCalle = rawInput.replace(/\d+/g, '').trim();
+          urlCalle.searchParams.set('nombre', soloCalle);
+          urlCalle.searchParams.set('provincia', 'Formosa');
+          urlCalle.searchParams.set('max', '1');
+
+          const response = await fetch(urlCalle);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.calles && data.calles.length > 0) {
+              const c = data.calles[0];
+              // Si tiene centroide, usamos coordenadas aproximadas de la calle
+              if (c.centroide) {
+                found = {
+                  lat: c.centroide.lat,
+                  lon: c.centroide.lon,
+                  name: `${c.nombre} (Zona aproximada), Formosa`
+                };
+              }
+            }
           }
+        } catch (e) {
+          console.error('Error buscando calle genérica:', e);
         }
       }
 
-      // Validar si se encontró la ubicación
+      // Validar si se encontró
       if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
-        statusBox.textContent = 'No encontramos esa dirección. Probá escribir solo el nombre de la calle.';
+        statusBox.textContent = 'No se encontró la dirección exacta en el registro oficial.';
         return;
       }
 
@@ -195,7 +170,7 @@
           const userLat = position.coords.latitude;
           const userLon = position.coords.longitude;
 
-          statusBox.textContent = '¡Ruta trazada hacia el destino!';
+          statusBox.textContent = '¡Ruta oficial trazada hacia: ' + found.name + '!';
 
           if (routingControl) {
             map.removeControl(routingControl);
@@ -211,12 +186,12 @@
             showAlternatives: false,
             fitSelectedRoutes: true,
             lineOptions: {
-              styles: [{ color: '#007bff', opacity: 0.8, weight: 6 }]
+              styles: [{ color: '#28a745', opacity: 0.8, weight: 6 }] // Línea verde oficial
             }
           }).addTo(map);
         },
         (error) => {
-          statusBox.textContent = 'Dirección ubicada en el mapa (GPS no disponible).';
+          statusBox.textContent = 'Dirección ubicada, pero el GPS no está disponible.';
           map.setView([found.lat, found.lon], 16);
           L.marker([found.lat, found.lon]).addTo(map).bindPopup(found.name).openPopup();
         },
