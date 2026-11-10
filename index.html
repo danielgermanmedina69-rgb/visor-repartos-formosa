@@ -1,274 +1,479 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Logística y Entregas - Mapa de Reparto</title>
-  
-  <!-- Leaflet CSS y JS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#121212">
+  <title>Logística Dark Mode · Formosa</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { display: flex; height: 100vh; overflow: hidden; }
+    :root { 
+      --bg: #121212; 
+      --panel: #1e1e1e; 
+      --accent: #007acc; 
+      --ink: #e0e0e0; 
+      --muted: #aaa; 
+    }
+    * { box-sizing: border-box; }
+    html, body { 
+      margin: 0; 
+      height: 100%; 
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; 
+      background: var(--bg); 
+      color: var(--ink); 
+    }
+    body { display: flex; flex-direction: column; }
+    header { padding: 10px 14px; background: var(--bg); border-bottom: 1px solid #333; }
+    h1 { font-size: 16px; margin: 0 0 2px; letter-spacing: .2px; }
+    .sub { color: var(--muted); font-size: 11px; }
     
-    #sidebar {
-      width: 380px;
-      background: #f8fafc;
-      border-right: 1px solid #e2e8f0;
-      display: flex;
-      flex-direction: column;
-      z-index: 1000;
-      box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+    .controls { padding: 10px 12px; background: var(--panel); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #333; }
+    .search-row { display: flex; gap: 7px; width: 100%; }
+    input { 
+      min-width: 0; 
+      flex: 1; 
+      border: 1px solid #444; 
+      border-radius: 6px; 
+      padding: 9px 12px; 
+      font-size: 14px; 
+      background: #2d2d2d; 
+      color: #fff; 
+      outline: none;
     }
-
-    #map { flex: 1; height: 100%; }
-
-    .header { padding: 16px; background: #1e293b; color: white; }
-    .header h1 { font-size: 1.1rem; }
-
-    .search-box { padding: 12px; background: white; border-bottom: 1px solid #e2e8f0; }
-    .input-group { margin-bottom: 8px; }
-    .input-group label { display: block; font-size: 0.75rem; color: #64748b; font-weight: bold; margin-bottom: 2px; }
-    .input-group input, .input-group select {
-      width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem;
+    input:focus { border-color: var(--accent); }
+    button { 
+      border: 0; 
+      border-radius: 6px; 
+      padding: 9px 12px; 
+      font-weight: 700; 
+      font-size: 13px; 
+      background: var(--accent); 
+      color: #fff; 
+      cursor: pointer; 
+      transition: background 0.2s;
     }
+    button:hover { background: #0098ff; }
+    .btn-secondary { background: #6c757d; }
+    .btn-secondary:hover { background: #5a6268; }
+    .btn-cancel { background: #d9534f; }
+    .btn-cancel:hover { background: #c9302c; }
+    .btn-clear { background: #e0a800; color: #121212; }
+    .btn-clear:hover { background: #d39e00; }
+    .btn-ruta { margin-top: 8px; width: 100%; background: #28a745; color: white; padding: 6px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; }
+    .btn-ruta:hover { background: #218838; }
 
-    .btn {
-      width: 100%; padding: 10px; background: #2563eb; color: white; border: none;
-      border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s;
+    .actions { display: flex; gap: 7px; flex-wrap: wrap; width: 100%; align-items: center; justify-content: space-between; }
+    .button-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    #status { font-size: 12px; color: var(--muted); line-height: 1.4; width: 100%; }
+    
+    #map { flex: 1; min-height: 280px; width: 100%; background: #1a1a1a; }
+    footer { background: var(--bg); color: var(--muted); font-size: 10px; padding: 6px 12px; border-top: 1px solid #222; }
+    
+    /* Estilos del panel de navegación Leaflet */
+    .leaflet-control-layers { background: var(--panel) !important; color: var(--ink) !important; border: 1px solid #444 !important; border-radius: 8px !important; }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #222 !important; color: #fff !important; border-radius: 6px; }
+    
+    .leaflet-routing-container { 
+      background-color: #1e1e1e !important; 
+      color: #e0e0e0 !important; 
+      border-radius: 8px; 
+      padding: 10px; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6); 
+      border: 1px solid #444;
+      max-width: 300px;
     }
-    .btn:hover { background: #1d4ed8; }
-    .btn-secondary { background: #64748b; margin-top: 5px; }
-    .btn-secondary:hover { background: #475569; }
+    .leaflet-routing-alt { max-height: 160px; overflow-y: auto; background-color: #2d2d2d !important; color: #e0e0e0 !important; }
+    .leaflet-routing-alt tr:hover { background-color: #383838 !important; }
 
-    .deliveries-list { flex: 1; overflow-y: auto; padding: 12px; }
-    .delivery-card {
-      background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;
-      margin-bottom: 8px; border-left: 4px solid #f59e0b;
+    .gps-dot { 
+      width: 18px; 
+      height: 18px; 
+      border-radius: 50%; 
+      background: #007acc; 
+      border: 3px solid white; 
+      box-shadow: 0 1px 7px #000; 
     }
-    .delivery-card.completed { border-left-color: #10b981; opacity: 0.7; }
-    .delivery-card h4 { font-size: 0.95rem; color: #1e293b; }
-    .delivery-card p { font-size: 0.8rem; color: #64748b; margin: 2px 0; }
-    .card-actions { display: flex; gap: 6px; margin-top: 8px; }
-    .card-actions button {
-      flex: 1; padding: 4px; font-size: 0.75rem; border-radius: 4px; border: 1px solid #cbd5e1;
-      background: #f1f5f9; cursor: pointer;
-    }
-
-    /* Responsive para móvil */
-    @media (max-width: 768px) {
-      body { flex-direction: column-reverse; }
-      #sidebar { width: 100%; height: 50%; }
-      #map { width: 100%; height: 50%; }
+    @media (min-width: 700px) { 
+      body { 
+        max-width: 950px; 
+        margin: auto; 
+        height: 100dvh; 
+        border-left: 1px solid #333; 
+        border-right: 1px solid #333; 
+      } 
     }
   </style>
 </head>
 <body>
-
-  <!-- Panel lateral con formulario y lista de entregas -->
-  <div id="sidebar">
-    <div class="header">
-      <h1>📦 Control de Entregas y Rutas</h1>
+  <header>
+    <h1>🧭 Logística Dark Mode · Formosa</h1>
+    <div class="sub">Catastro provincial IDEF + Filtros de repartos + Navegación OSRM por voz</div>
+  </header>
+  
+  <section class="controls">
+    <!-- Filtros base de datos -->
+    <div class="search-row">
+      <input type="text" id="filter-barrio" placeholder="Filtrar por Barrio...">
+      <input type="text" id="filter-calle" placeholder="Filtrar por Calle o Altura...">
+      <button onclick="filtrarUbicaciones()">Buscar</button>
+    </div>
+    
+    <!-- Buscador general -->
+    <div class="search-row">
+      <input id="address" type="search" placeholder="Dirección exacta (ej. San Martín 150)...">
+      <button id="searchBtn" class="btn-secondary">Geo-buscar</button>
     </div>
 
-    <div class="search-box">
-      <div class="input-group">
-        <label>Buscar Calle y Altura o Lugar (Geocodificador):</label>
-        <input type="text" id="geoInput" placeholder="Ej: Av. San Martín 1500, Córdoba" />
+    <div class="actions">
+      <div class="button-group">
+        <button id="locateBtn">📍 Mi Ubicación</button>
+        <button class="btn-clear" onclick="limpiarBusquedas()">🧹 Limpiar</button>
+        <button id="stopBtn" class="btn-cancel">Pausar GPS</button>
       </div>
-      <button class="btn btn-secondary" onclick="buscarDireccion()">🔍 Localizar en mapa</button>
-      
-      <hr style="margin: 10px 0; border: none; border-top: 1px dashed #cbd5e1;">
-
-      <div class="input-group">
-        <label>Barrio / Zona:</label>
-        <input type="text" id="barrioInput" placeholder="Ej: B° Los Álamos" />
-      </div>
-      <div style="display: flex; gap: 8px;">
-        <div class="input-group" style="flex: 1;">
-          <label>Manzana / Torre:</label>
-          <input type="text" id="manzanaInput" placeholder="Mza 12" />
-        </div>
-        <div class="input-group" style="flex: 1;">
-          <label>Casa / Lote / Dpto:</label>
-          <input type="text" id="casaInput" placeholder="Lote 4" />
-        </div>
-      </div>
-      <div class="input-group">
-        <label>Destinatario / Paquete:</label>
-        <input type="text" id="destinatarioInput" placeholder="Nombre o Tracking ID" />
-      </div>
-
-      <button class="btn" onclick="guardarPuntoEntrega()">➕ Agregar Paquete a la Ruta</button>
-      <small style="display:block; text-align:center; color:#64748b; font-size:0.7rem; margin-top:4px;">
-        *Tip: También puedes hacer clic directo en el mapa para fijar la ubicación exacta.
-      </small>
+      <button class="btn-cancel" onclick="cancelarRuta()">Cancelar Ruta</button>
     </div>
+    <div id="status">Ingresá un filtro, buscá una dirección o tocá el mapa.</div>
+  </section>
+  
+  <main id="map"></main>
+  
+  <footer>
+    Catastro IDEF / DGCT Formosa. Enrutamiento libre OSRM y OpenStreetMap.
+  </footer>
 
-    <div class="deliveries-list" id="deliveriesList">
-      <!-- Lista dinámica de paquetes -->
-    </div>
-  </div>
-
-  <!-- Contenedor del Mapa -->
-  <div id="map"></div>
-
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
   <script>
-    // 1. Inicializar Mapa (centrado por defecto en coordenadas estándar, editable a tu ciudad)
-    let currentCoords = [-31.4201, -64.1888]; // Coordenadas iniciales (ej. Córdoba/Arg)
-    const map = L.map('map').setView(currentCoords, 13);
+    const statusBox = document.getElementById('status');
+    const map = L.map('map', { zoomControl: true }).setView([-26.1852, -58.1751], 14);
 
-    // Cargar mapa base de OpenStreetMap
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
+    const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 20, 
+      attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    let tempMarker = null;
-    let entregas = JSON.parse(localStorage.getItem('entregas_db') || '[]');
-
-    // 2. Al hacer clic en el mapa, mover marcador de referencia
-    map.on('click', function(e) {
-      marcarPuntoTemporal(e.latlng.lat, e.latlng.lng);
-    });
-
-    function marcarPuntoTemporal(lat, lng) {
-      currentCoords = [lat, lng];
-      if (tempMarker) map.removeLayer(tempMarker);
-      tempMarker = L.marker([lat, lng], { draggable: true }).addTo(map);
-      tempMarker.on('dragend', function(e) {
-        currentCoords = [e.target.getLatLng().lat, e.target.getLatLng().lng];
+    const wmsUrl = 'https://idef.formosa.gob.ar/servicios/wms';
+    function cadastralLayer(name) {
+      const layer = L.tileLayer.wms(wmsUrl, {
+        layers: name, 
+        format: 'image/png', 
+        transparent: true,
+        version: '1.1.1', 
+        opacity: 0.75, 
+        tiled: true
       });
+      layer.on('tileerror', () => {
+        statusBox.textContent = 'Aviso: Servidor catastral IDEF inactivo temporalmente. El mapa sigue operativo.';
+      });
+      return layer;
+    }
+    
+    const blocks = cadastralLayer('dgct:cat_prov_manzanas');
+    const parcels = cadastralLayer('dgct:dgct_prov_parurbanas');
+    const roadNames = cadastralLayer('dgct:prov_calles');
+    
+    const overlays = {
+      'Manzanas (Catastro)': blocks,
+      'Parcelas urbanas': parcels,
+      'Calles catastrales': roadNames
+    };
+    L.control.layers({ 'Mapa base': streets }, overlays, { collapsed: false }).addTo(map);
+    blocks.addTo(map);
+
+    const baseDeDatos = [
+      { id: 1, barrio: "Centro", calle: "San Martín 123", lat: -26.1822, lng: -58.1731 },
+      { id: 2, barrio: "Don Bosco", calle: "Belgrano 456", lat: -26.1950, lng: -58.1810 },
+      { id: 3, barrio: "Independencia", calle: "Eva Perón 789", lat: -26.1750, lng: -58.1650 }
+    ];
+
+    let watchId = null;
+    let gpsMarker = null;
+    let accuracyCircle = null;
+    let currentCoords = null;
+    let targetMarker = null;
+    let routingControl = null;
+    let currentSteps = [];
+    let lastSpokenInstruction = '';
+    const gpsIcon = L.divIcon({ className: '', html: '<div class="gps-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+    let markersLayer = L.layerGroup().addTo(map);
+
+    // Sintetizador de voz optimizado (ES-AR)
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      if (text === lastSpokenInstruction) return;
+      lastSpokenInstruction = text;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'es-AR';
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
     }
 
-    // 3. Buscar dirección por API pública (Photon / OpenStreetMap)
-    async function buscarDireccion() {
-      const query = document.getElementById('geoInput').value.trim();
-      if (!query) return alert('Ingresa una calle con altura o localidad.');
+    function translateManeuver(step) {
+      const type = step.maneuver.type;
+      const modifier = step.maneuver.modifier;
+      const name = step.name ? ` por ${step.name}` : '';
+      switch (type) {
+        case 'depart': return `Iniciá la marcha${name}.`;
+        case 'arrive': return `Llegaste a tu destino.`;
+        case 'turn':
+          if (modifier === 'left') return `Girá a la izquierda${name}.`;
+          if (modifier === 'right') return `Girá a la derecha${name}.`;
+          if (modifier === 'slight left') return `Ligeramente a la izquierda${name}.`;
+          if (modifier === 'slight right') return `Ligeramente a la derecha${name}.`;
+          break;
+        case 'continue': return `Continuá derecho${name}.`;
+      }
+      return `Continuá${name}.`;
+    }
 
-      try {
-        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1`);
-        const data = await res.json();
-        
-        if (data.features && data.features.length > 0) {
-          const coords = data.features[0].geometry.coordinates;
-          const lat = coords[1];
-          const lon = coords[0];
+    function showPosition(pos, forceCenter = false) {
+      const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy || 25;
+      currentCoords = [lat, lon];
+      
+      if (!gpsMarker) {
+        gpsMarker = L.marker([lat, lon], { icon: gpsIcon, zIndexOffset: 1000 }).addTo(map).bindPopup('Tu ubicación GPS');
+        accuracyCircle = L.circle([lat, lon], { radius: accuracy, color: '#007acc', weight: 1, fillOpacity: .15 }).addTo(map);
+        map.setView([lat, lon], 17);
+      } else {
+        gpsMarker.setLatLng([lat, lon]);
+        accuracyCircle.setLatLng([lat, lon]).setRadius(accuracy);
+        if (forceCenter) {
           map.setView([lat, lon], 17);
-          marcarPuntoTemporal(lat, lon);
-        } else {
-          alert('No se encontró la dirección exacta. Ubícala manualmente haciendo clic en el mapa.');
         }
-      } catch (err) {
-        alert('Error conectando al servicio de geocodificación.');
+      }
+      
+      if (window.lastTarget) {
+        checkNavigationSteps(lat, lon);
       }
     }
 
-    // 4. Guardar entrega con datos de Manzana / Barrio
-    function guardarPuntoEntrega() {
-      const destinatario = document.getElementById('destinatarioInput').value || 'Sin Nombre';
-      const barrio = document.getElementById('barrioInput').value;
-      const manzana = document.getElementById('manzanaInput').value;
-      const casa = document.getElementById('casaInput').value;
-      const calle = document.getElementById('geoInput').value;
-
-      const nuevaEntrega = {
-        id: Date.now(),
-        destinatario,
-        calle,
-        barrio,
-        manzana,
-        casa,
-        lat: currentCoords[0],
-        lng: currentCoords[1],
-        completado: false
-      };
-
-      entregas.push(nuevaEntrega);
-      guardarEnStorage();
-      renderizarEntregas();
-
-      // Limpiar campos
-      document.getElementById('destinatarioInput').value = '';
-      document.getElementById('manzanaInput').value = '';
-      document.getElementById('casaInput').value = '';
-      if (tempMarker) { map.removeLayer(tempMarker); tempMarker = null; }
+    function checkNavigationSteps(lat, lon) {
+      if (!currentSteps || currentSteps.length === 0) return;
+      const nextStep = currentSteps[0];
+      const stepCoord = [nextStep.maneuver.location[1], nextStep.maneuver.location[0]];
+      const dist = map.distance([lat, lon], stepCoord);
+      if (dist < 35) {
+        speak(translateManeuver(nextStep));
+        currentSteps.shift();
+      }
     }
 
-    let markersGroup = L.layerGroup().addTo(map);
+    document.getElementById('locateBtn').addEventListener('click', () => {
+      if (!('geolocation' in navigator)) {
+        statusBox.textContent = 'Geolocalización no disponible.';
+        return;
+      }
+      statusBox.textContent = 'Obteniendo tu ubicación exacta...';
+      navigator.geolocation.getCurrentPosition(pos => {
+        showPosition(pos, true);
+        statusBox.textContent = '📍 Centrado en tu ubicación actual.';
+      }, () => {
+        statusBox.textContent = 'No se pudo obtener ubicación. Verificá los permisos del GPS.';
+      }, { enableHighAccuracy: true, timeout: 10000 });
 
-    // 5. Renderizar lista y marcadores en mapa
-    function renderizarEntregas() {
-      markersGroup.clearLayers();
-      const listContainer = document.getElementById('deliveriesList');
-      listContainer.innerHTML = '';
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = navigator.geolocation.watchPosition(pos => showPosition(pos, false), null, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+    });
 
-      entregas.forEach((item, index) => {
-        // Añadir marcador
-        const markerColor = item.completado ? '#10b981' : '#f59e0b';
-        const marker = L.circleMarker([item.lat, item.lng], {
-          radius: 9,
-          fillColor: markerColor,
-          color: '#fff',
-          weight: 2,
-          fillOpacity: 0.9
-        }).addTo(markersGroup);
+    document.getElementById('stopBtn').addEventListener('click', () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      statusBox.textContent = 'GPS pausado y voz detenida.';
+    });
 
-        const infoPopup = `
-          <b>${item.destinatario}</b><br>
-          ${item.calle ? item.calle + '<br>' : ''}
-          ${item.barrio ? '<b>Barrio:</b> ' + item.barrio + '<br>' : ''}
-          ${item.manzana ? '<b>Mza:</b> ' + item.manzana : ''} ${item.casa ? '<b>Casa/Lote:</b> ' + item.casa : ''}
+    function limpiarBusquedas() {
+      document.getElementById('filter-barrio').value = '';
+      document.getElementById('filter-calle').value = '';
+      document.getElementById('address').value = '';
+      
+      if (targetMarker) {
+        map.removeLayer(targetMarker);
+        targetMarker = null;
+      }
+      
+      cancelarRuta();
+      mostrarMarcadores(baseDeDatos);
+      statusBox.textContent = 'Se limpiaron las búsquedas y filtros.';
+    }
+
+    // Trazado de ruta OSRM con panel visible y captura de maniobras para voz
+    function trazarRuta(origen, destino) {
+      if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
+      }
+
+      routingControl = L.Routing.control({
+        waypoints: [origen, destino],
+        router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+        lineOptions: { styles: [{ color: '#007acc', opacity: 0.9, weight: 6 }] },
+        show: true,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true
+      }).addTo(map);
+
+      routingControl.on('routesfound', function(e) {
+        const routes = e.routes;
+        if (routes && routes.length > 0) {
+          const legs = routes[0].instructions || [];
+          currentSteps = routes[0].instructions ? [...routes[0].instructions] : [];
+          if (legs.length > 0) {
+            speak("Iniciando guía por voz. " + legs[0].text);
+          }
+        }
+      });
+
+      statusBox.textContent = `🎙️ Navegando con línea azul y guía por voz.`;
+    }
+
+    function cancelarRuta() {
+      if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
+      }
+      window.lastTarget = null;
+      currentSteps = [];
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      statusBox.textContent = 'Ruta cancelada.';
+    }
+
+    function startJourneyTo(lat, lon, label) {
+      const destino = L.latLng(lat, lon);
+      window.lastTarget = destino;
+      lastSpokenInstruction = '';
+
+      if (!currentCoords) {
+        statusBox.textContent = 'Activando GPS para iniciar ruta...';
+        navigator.geolocation.getCurrentPosition(pos => {
+          showPosition(pos, true);
+          const origen = L.latLng(pos.coords.latitude, pos.coords.longitude);
+          trazarRuta(origen, destino);
+        }, () => {
+          statusBox.textContent = 'Usando centro del mapa como origen por falta de GPS.';
+          trazarRuta(map.getCenter(), destino);
+        }, { enableHighAccuracy: true });
+      } else {
+        const origen = L.latLng(currentCoords[0], currentCoords[1]);
+        trazarRuta(origen, destino);
+      }
+    }
+
+    function mostrarMarcadores(datos) {
+      markersLayer.clearLayers();
+      datos.forEach(item => {
+        const popupContent = `
+          <b>${item.calle}</b><br>
+          Barrio: ${item.barrio}<br>
+          <button class="btn-ruta" onclick="startJourneyTo(${item.lat}, ${item.lng}, '${item.calle}')">🚀 Navegar</button>
         `;
-        marker.bindPopup(infoPopup);
-
-        // Tarjeta en barra lateral
-        const card = document.createElement('div');
-        card.className = `delivery-card ${item.completado ? 'completed' : ''}`;
-        card.innerHTML = `
-          <h4>${index + 1}. ${item.destinatario}</h4>
-          <p>${item.barrio ? 'Barrio: ' + item.barrio + ' | ' : ''} Mza: ${item.manzana || '-'} Lote: ${item.casa || '-'}</p>
-          <p>${item.calle || 'Punto fijado en mapa'}</p>
-          <div class="card-actions">
-            <button onclick="centrarEnMapa(${item.lat}, ${item.lng})">📍 Ver</button>
-            <button onclick="abrirNavegadorGps(${item.lat}, ${item.lng})">🚗 Navegar (GPS)</button>
-            <button onclick="toggleEstado(${item.id})">${item.completado ? 'Reabrir' : 'Entregado'}</button>
-            <button onclick="eliminarEntrega(${item.id})" style="color: red;">✕</button>
-          </div>
-        `;
-        listContainer.appendChild(card);
+        L.marker([item.lat, item.lng]).addTo(markersLayer).bindPopup(popupContent);
       });
     }
 
-    function centrarEnMapa(lat, lng) {
-      map.setView([lat, lng], 18);
+    function filtrarUbicaciones() {
+      const b = document.getElementById('filter-barrio').value.toLowerCase().trim();
+      const c = document.getElementById('filter-calle').value.toLowerCase().trim();
+
+      const filtrados = baseDeDatos.filter(item => {
+        const coincideBarrio = item.barrio.toLowerCase().includes(b);
+        const coincideCalle = item.calle.toLowerCase().includes(c);
+        return coincideBarrio && coincideCalle;
+      });
+
+      mostrarMarcadores(filtrados);
+      statusBox.textContent = `Mostrando ${filtrados.length} resultados de la base de datos.`;
+      
+      if (filtrados.length === 1) {
+        map.setView([filtrados[0].lat, filtrados[0].lng], 16);
+      }
     }
 
-    function abrirNavegadorGps(lat, lng) {
-      // Abre Google Maps o Waze con la ruta turn-by-turn hacia las coordenadas exactas de la manzana
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      if (targetMarker) map.removeLayer(targetMarker);
+
+      const popupContent = document.createElement('div');
+      popupContent.innerHTML = `<b>Punto seleccionado</b><br><span style="font-size:11px; color:#aaa;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span><br>`;
+      
+      const journeyBtn = document.createElement('button');
+      journeyBtn.className = 'btn-ruta';
+      journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
+      journeyBtn.onclick = () => {
+        startJourneyTo(lat, lng, 'el punto seleccionado');
+        targetMarker.closePopup();
+      };
+      popupContent.appendChild(journeyBtn);
+
+      targetMarker = L.marker([lat, lng]).addTo(map).bindPopup(popupContent).openPopup();
+    });
+
+    async function searchAddress() {
+      const query = document.getElementById('address').value.trim();
+      if (!query) {
+        statusBox.textContent = 'Escribí una calle y altura (ej. 25 de Mayo 150).';
+        return;
+      }
+
+      statusBox.textContent = `Buscando "${query}" en Formosa...`;
+      let found = null;
+
+      try {
+        const georefUrl = new URL('https://apis.datos.gob.ar/georef/api/direcciones');
+        georefUrl.searchParams.set('direccion', query);
+        georefUrl.searchParams.set('provincia', 'Formosa');
+        georefUrl.searchParams.set('departamento', 'Formosa');
+        georefUrl.searchParams.set('max', '1');
+
+        const res = await fetch(georefUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.direcciones && data.direcciones.length > 0) {
+            const item = data.direcciones[0];
+            if (item.ubicacion?.lat) {
+              found = { lat: item.ubicacion.lat, lon: item.ubicacion.lon, name: item.nomenclatura };
+            }
+          }
+        }
+      } catch (e) { console.warn(e); }
+
+      if (!found) {
+        try {
+          const nomUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query + ', Formosa, Argentina')}&countrycodes=ar&limit=1`;
+          const res = await fetch(nomUrl, { headers: { 'Accept-Language': 'es' } });
+          if (res.ok) {
+            const results = await res.json();
+            if (results.length > 0) {
+              found = { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon), name: results[0].display_name };
+            }
+          }
+        } catch (e) { console.warn(e); }
+      }
+
+      if (!found) {
+        statusBox.textContent = '❌ No se encontró la dirección exacta. Probá tocando en el mapa.';
+        return;
+      }
+
+      if (targetMarker) map.removeLayer(targetMarker);
+      targetMarker = L.marker([found.lat, found.lon]).addTo(map)
+        .bindPopup(`<b>${found.name}</b><br><button class="btn-ruta" onclick="startJourneyTo(${found.lat}, ${found.lon}, '${found.name}')">🚀 Navegar</button>`)
+        .openPopup();
+      
+      map.setView([found.lat, found.lon], 17);
+      statusBox.textContent = `📍 Encontrado: ${found.name}`;
     }
 
-    function toggleEstado(id) {
-      entregas = entregas.map(e => e.id === id ? { ...e, completado: !e.completado } : e);
-      guardarEnStorage();
-      renderizarEntregas();
-    }
+    document.getElementById('searchBtn').addEventListener('click', searchAddress);
+    document.getElementById('address').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') searchAddress();
+    });
 
-    function eliminarEntrega(id) {
-      entregas = entregas.filter(e => e.id !== id);
-      guardarEnStorage();
-      renderizarEntregas();
-    }
-
-    function guardarEnStorage() {
-      localStorage.setItem('entregas_db', JSON.stringify(entregas));
-    }
-
-    // Inicializar
-    renderizarEntregas();
+    mostrarMarcadores(baseDeDatos);
   </script>
 </body>
 </html>
