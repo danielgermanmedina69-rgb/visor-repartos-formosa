@@ -54,7 +54,6 @@
     let routingControl = null;
     let markersLayer = L.layerGroup().addTo(map);
 
-    // Base de datos de ejemplo (puedes agregar más elementos aquí)
     const baseDeDatos = [
         { id: 1, barrio: "Centro", calle: "San Martín 123", lat: -26.1822, lng: -58.1731 },
         { id: 2, barrio: "Don Bosco", calle: "Belgrano 456", lat: -26.1950, lng: -58.1810 },
@@ -87,7 +86,6 @@
     }
 
     function filtrarUbicaciones() {
-        // Limpiamos espacios y pasamos a minúsculas para una búsqueda flexible
         const b = document.getElementById('filter-barrio').value.toLowerCase().trim();
         const c = document.getElementById('filter-calle').value.toLowerCase().trim();
 
@@ -146,7 +144,6 @@
         }
     }
 
-    // Inicializar mostrando todo por defecto
     obtenerUbicacionActual();
     mostrarMarcadores(baseDeDatos);
 </script>
