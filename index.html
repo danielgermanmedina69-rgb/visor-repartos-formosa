@@ -3,16 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#10251f">
-  <title>Visor de Repartos · Formosa</title>
+  <meta name="theme-color" content="#121212">
+  <title>Logística Dark Mode · Formosa</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
   <style>
     :root { 
-      --bg: #10251f; 
-      --panel: #17362d; 
-      --accent: #f0b84b; 
-      --ink: #f6f4ed; 
-      --muted: #c2d2ca; 
+      --bg: #121212; 
+      --panel: #1e1e1e; 
+      --accent: #007acc; 
+      --ink: #e0e0e0; 
+      --muted: #aaa; 
     }
     * { box-sizing: border-box; }
     html, body { 
@@ -23,103 +24,117 @@
       color: var(--ink); 
     }
     body { display: flex; flex-direction: column; }
-    header { padding: 12px 14px 10px; background: var(--bg); }
-    h1 { font-size: 18px; margin: 0 0 3px; letter-spacing: .2px; }
-    .sub { color: var(--muted); font-size: 12px; }
-    .controls { padding: 10px 12px; background: var(--panel); display: grid; gap: 8px; }
-    .search { display: flex; gap: 7px; }
+    header { padding: 10px 14px; background: var(--bg); border-bottom: 1px solid #333; }
+    h1 { font-size: 16px; margin: 0 0 2px; letter-spacing: .2px; }
+    .sub { color: var(--muted); font-size: 11px; }
+    
+    .controls { padding: 10px 12px; background: var(--panel); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #333; }
+    .search-row { display: flex; gap: 7px; width: 100%; }
     input { 
       min-width: 0; 
       flex: 1; 
-      border: 1px solid #527568; 
-      border-radius: 10px; 
-      padding: 11px 12px; 
-      font-size: 15px; 
-      background: #f8faf8; 
-      color: #15251f; 
+      border: 1px solid #444; 
+      border-radius: 6px; 
+      padding: 9px 12px; 
+      font-size: 14px; 
+      background: #2d2d2d; 
+      color: #fff; 
       outline: none;
     }
     input:focus { border-color: var(--accent); }
     button { 
       border: 0; 
-      border-radius: 10px; 
-      padding: 10px 12px; 
-      font-weight: 700; 
-      font-size: 14px; 
-      background: var(--accent); 
-      color: #1c261f; 
-      cursor: pointer; 
-    }
-    button.secondary { background: #dce9e2; }
-    .actions { display: flex; gap: 7px; flex-wrap: wrap; }
-    .actions button { flex: 1; min-width: 120px; }
-    #status { font-size: 12px; color: var(--muted); min-height: 16px; line-height: 1.4; }
-    #map { flex: 1; min-height: 280px; width: 100%; background: #dce5df; }
-    footer { background: var(--bg); color: var(--muted); font-size: 11px; padding: 7px 12px; }
-    .leaflet-control-layers { border-radius: 10px !important; }
-    .leaflet-popup-content { font-size: 14px; text-align: center; }
-    .popup-btn { 
-      background: var(--panel); 
-      color: var(--ink); 
-      border: none; 
-      padding: 8px 10px; 
       border-radius: 6px; 
-      margin-top: 8px; 
+      padding: 9px 12px; 
+      font-weight: 700; 
       font-size: 13px; 
-      width: 100%; 
+      background: var(--accent); 
+      color: #fff; 
       cursor: pointer; 
-      font-weight: bold;
+      transition: background 0.2s;
     }
-    .popup-btn:hover { background: #224d40; }
+    button:hover { background: #0098ff; }
+    .btn-secondary { background: #6c757d; }
+    .btn-secondary:hover { background: #5a6268; }
+    .btn-cancel { background: #d9534f; }
+    .btn-cancel:hover { background: #c9302c; }
+    .btn-ruta { margin-top: 8px; width: 100%; background: #28a745; color: white; padding: 6px; border-radius: 4px; }
+    .btn-ruta:hover { background: #218838; }
+
+    .actions { display: flex; gap: 7px; flex-wrap: wrap; width: 100%; align-items: center; justify-content: space-between; }
+    #status { font-size: 12px; color: var(--muted); line-height: 1.4; width: 100%; }
+    
+    #map { flex: 1; min-height: 280px; width: 100%; background: #1a1a1a; }
+    footer { background: var(--bg); color: var(--muted); font-size: 10px; padding: 6px 12px; border-top: 1px solid #222; }
+    
+    /* Estilos Leaflet oscuros personalizados */
+    .leaflet-control-layers { background: var(--panel) !important; color: var(--ink) !important; border: 1px solid #444 !important; border-radius: 8px !important; }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #222 !important; color: #fff !important; border-radius: 6px; }
+    .leaflet-routing-container { background-color: #1e1e1e !important; color: #e0e0e0 !important; border-radius: 6px; padding: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+    .leaflet-routing-alt { max-height: 150px; overflow-y: auto; background-color: #2d2d2d !important; color: #e0e0e0 !important; }
+    
     .gps-dot { 
       width: 18px; 
       height: 18px; 
       border-radius: 50%; 
-      background: #1685ff; 
+      background: #007acc; 
       border: 3px solid white; 
-      box-shadow: 0 1px 7px #333; 
+      box-shadow: 0 1px 7px #000; 
     }
     @media (min-width: 700px) { 
       body { 
-        max-width: 900px; 
+        max-width: 950px; 
         margin: auto; 
         height: 100dvh; 
-        border-left: 1px solid #315448; 
-        border-right: 1px solid #315448; 
+        border-left: 1px solid #333; 
+        border-right: 1px solid #333; 
       } 
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>🧭 Visor de Repartos · Formosa</h1>
-    <div class="sub">Catastro provincial, búsqueda con alturas e itinerario por voz</div>
+    <h1>🧭 Logística Dark Mode · Formosa</h1>
+    <div class="sub">Catastro provincial IDEF + Filtros de repartos + Navegación OSRM</div>
   </header>
   
   <section class="controls">
-    <div class="search">
-      <input id="address" type="search" placeholder="Buscar calle y altura (ej. 25 de Mayo 150)">
-      <button id="searchBtn">Buscar</button>
+    <!-- Filtros de tu base de datos de repartos -->
+    <div class="search-row">
+      <input type="text" id="filter-barrio" placeholder="Filtrar por Barrio...">
+      <input type="text" id="filter-calle" placeholder="Filtrar por Calle o Altura...">
+      <button onclick="filtrarUbicaciones()">Buscar</button>
     </div>
+    
+    <!-- Buscador general de direcciones (Georef / Nominatim) -->
+    <div class="search-row">
+      <input id="address" type="search" placeholder="Dirección exacta (ej. San Martín 150)...">
+      <button id="searchBtn" class="btn-secondary">Geo-buscar</button>
+    </div>
+
     <div class="actions">
-      <button id="locateBtn">📍 Activar puntito azul</button>
-      <button id="stopBtn" class="secondary">Pausar GPS</button>
+      <div>
+        <button id="locateBtn">📍 Mi Ubicación</button>
+        <button id="stopBtn" class="btn-cancel">Pausar GPS</button>
+      </div>
+      <button class="btn-cancel" onclick="cancelarRuta()">Cancelar Ruta</button>
     </div>
-    <div id="status">Ingresá una calle y altura o tocá un punto del mapa para trazar ruta.</div>
+    <div id="status">Ingresá un filtro, buscá una dirección o tocá el mapa.</div>
   </section>
   
   <main id="map"></main>
   
   <footer>
-    Cartografía catastral: IDEF / Dirección General de Catastro Territorial. Geocodificador: GeoRef AR + OSM. Información orientativa.
+    Catastro IDEF / DGCT Formosa. Enrutamiento libre OSRM y OpenStreetMap.
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
   <script>
     const statusBox = document.getElementById('status');
-    const map = L.map('map', { zoomControl: true }).setView([-26.184, -58.175], 14);
+    const map = L.map('map', { zoomControl: true }).setView([-26.1852, -58.1751], 14);
 
-    // Mapa base callejero
+    // Mapa base oscuro o callejero adaptado
     const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20, 
       attribution: '&copy; OpenStreetMap'
@@ -133,11 +148,11 @@
         format: 'image/png', 
         transparent: true,
         version: '1.1.1', 
-        opacity: 0.88, 
+        opacity: 0.75, 
         tiled: true
       });
       layer.on('tileerror', () => {
-        statusBox.textContent = 'Aviso: El servidor catastral no respondió. El mapa base y GPS siguen activos.';
+        statusBox.textContent = 'Aviso: Servidor catastral IDEF inactivo temporalmente. El mapa sigue operativo.';
       });
       return layer;
     }
@@ -147,13 +162,19 @@
     const roadNames = cadastralLayer('dgct:prov_calles');
     
     const overlays = {
-      'Manzanas': blocks,
+      'Manzanas (Catastro)': blocks,
       'Parcelas urbanas': parcels,
       'Calles catastrales': roadNames
     };
-    L.control.layers({ 'Calles y mapa base': streets }, overlays, { collapsed: false }).addTo(map);
+    L.control.layers({ 'Mapa base': streets }, overlays, { collapsed: false }).addTo(map);
     blocks.addTo(map);
-    parcels.addTo(map);
+
+    // Base de datos local de entregas/repartos (puedes agregar más aquí)
+    const baseDeDatos = [
+      { id: 1, barrio: "Centro", calle: "San Martín 123", lat: -26.1822, lng: -58.1731 },
+      { id: 2, barrio: "Don Bosco", calle: "Belgrano 456", lat: -26.1950, lng: -58.1810 },
+      { id: 3, barrio: "Independencia", calle: "Eva Perón 789", lat: -26.1750, lng: -58.1650 }
+    ];
 
     // Variables de navegación y GPS
     let watchId = null;
@@ -162,16 +183,17 @@
     let currentCoords = null;
     let routeLayer = null;
     let targetMarker = null;
+    let routingControl = null;
     let currentSteps = [];
     let lastSpokenInstruction = '';
     const gpsIcon = L.divIcon({ className: '', html: '<div class="gps-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+    let markersLayer = L.layerGroup().addTo(map);
 
     // Síntesis de voz (Text-to-Speech)
     function speak(text) {
       if (!('speechSynthesis' in window)) return;
       if (text === lastSpokenInstruction) return;
       lastSpokenInstruction = text;
-
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'es-AR';
@@ -179,26 +201,18 @@
       window.speechSynthesis.speak(utterance);
     }
 
-    // Traducción de maniobras OSRM
     function translateManeuver(step) {
       const type = step.maneuver.type;
       const modifier = step.maneuver.modifier;
       const name = step.name ? ` en ${step.name}` : '';
-
       switch (type) {
         case 'depart': return `Iniciá la marcha${name}.`;
         case 'arrive': return `Llegaste a tu destino.`;
         case 'turn':
           if (modifier === 'left') return `Girá a la izquierda${name}.`;
           if (modifier === 'right') return `Girá a la derecha${name}.`;
-          if (modifier === 'slight left') return `Ligeramente a la izquierda${name}.`;
-          if (modifier === 'slight right') return `Ligeramente a la derecha${name}.`;
-          if (modifier === 'sharp left') return `Girá pronunciado a la izquierda${name}.`;
-          if (modifier === 'sharp right') return `Girá pronunciado a la derecha${name}.`;
-          if (modifier === 'uturn') return `Hacé un giro en U${name}.`;
           break;
         case 'continue': return `Continuá derecho${name}.`;
-        case 'roundabout': return `Entrá a la rotonda${name}.`;
       }
       return `Continuá por${name}.`;
     }
@@ -211,46 +225,38 @@
       
       if (!gpsMarker) {
         gpsMarker = L.marker([lat, lon], { icon: gpsIcon, zIndexOffset: 1000 }).addTo(map).bindPopup('Tu ubicación GPS');
-        accuracyCircle = L.circle([lat, lon], { radius: accuracy, color: '#1685ff', weight: 1, fillOpacity: .08 }).addTo(map);
-        map.setView([lat, lon], 17);
+        accuracyCircle = L.circle([lat, lon], { radius: accuracy, color: '#007acc', weight: 1, fillOpacity: .15 }).addTo(map);
+        map.setView([lat, lon], 16);
       } else {
         gpsMarker.setLatLng([lat, lon]);
         accuracyCircle.setLatLng([lat, lon]).setRadius(accuracy);
       }
       
-      if (!window.lastTarget) {
-        statusBox.textContent = `📍 GPS activo (precisión: ${Math.round(accuracy)} m). Tocá el mapa o buscá una dirección.`;
-      } else {
-        getRoute(currentCoords, window.lastTarget);
+      if (window.lastTarget) {
         checkNavigationSteps(lat, lon);
       }
     }
 
     function checkNavigationSteps(lat, lon) {
       if (!currentSteps || currentSteps.length === 0) return;
-
       const nextStep = currentSteps[0];
       const stepCoord = [nextStep.maneuver.location[1], nextStep.maneuver.location[0]];
       const dist = map.distance([lat, lon], stepCoord);
-
-      // Si estamos a menos de 40 metros del giro, emite la voz
       if (dist < 40) {
-        const instruction = translateManeuver(nextStep);
-        speak(instruction);
+        speak(translateManeuver(nextStep));
         currentSteps.shift();
       }
     }
 
-    // Controles GPS
     document.getElementById('locateBtn').addEventListener('click', () => {
       if (!('geolocation' in navigator)) {
-        statusBox.textContent = 'Este navegador no ofrece geolocalización.';
+        statusBox.textContent = 'Geolocalización no disponible en este navegador.';
         return;
       }
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-      statusBox.textContent = 'Solicitando señal GPS...';
-      watchId = navigator.geolocation.watchPosition(showPosition, err => {
-        statusBox.textContent = 'No se pudo obtener ubicación. Verificá los permisos del GPS.';
+      statusBox.textContent = 'Buscando señal GPS...';
+      watchId = navigator.geolocation.watchPosition(showPosition, () => {
+        statusBox.textContent = 'No se pudo obtener ubicación. Verificá los permisos.';
       }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
     });
 
@@ -258,66 +264,101 @@
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       watchId = null;
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-      statusBox.textContent = 'GPS pausado y navegación por voz detenida.';
+      statusBox.textContent = 'GPS pausado y voz detenida.';
     });
 
-    // Cálculo y trazado de ruta con OSRM
-    async function getRoute(start, end) {
-      try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson&steps=true`;
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const data = await res.json();
-        
-        if (data.routes && data.routes.length > 0) {
-          const route = data.routes[0];
-          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-          
-          if (route.legs && route.legs[0].steps) {
-            currentSteps = route.legs[0].steps;
-          }
-          
-          if (routeLayer) map.removeLayer(routeLayer);
-          routeLayer = L.polyline(coords, { color: '#1685ff', weight: 5, opacity: 0.85 }).addTo(map);
-          
-          const distanceKm = (route.distance / 1000).toFixed(1);
-          const durationMin = Math.round(route.duration / 60);
-          statusBox.textContent = `🎙️ Navegando: ${distanceKm} km (~${durationMin} min).`;
-        }
-      } catch (e) {
-        console.error('Error al calcular la ruta:', e);
+    // Trazado de ruta con OSRM Routing Machine
+    function trazarRuta(origen, destino) {
+      if (routingControl) map.removeControl(routingControl);
+
+      routingControl = L.Routing.control({
+        waypoints: [origen, destino],
+        router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+        lineOptions: { styles: [{ color: '#007acc', opacity: 0.8, weight: 6 }] },
+        show: true,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true
+      }).addTo(map);
+
+      statusBox.textContent = `🎙️ Ruta iniciada hacia el destino.`;
+    }
+
+    function cancelarRuta() {
+      if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
       }
+      if (routeLayer) map.removeLayer(routeLayer);
+      window.lastTarget = null;
+      statusBox.textContent = 'Ruta cancelada.';
     }
 
     function startJourneyTo(lat, lon, label) {
-      const point = [lat, lon];
-      window.lastTarget = point;
+      const destino = L.latLng(lat, lon);
+      window.lastTarget = destino;
       lastSpokenInstruction = '';
-
       speak("Iniciando ruta hacia " + label);
 
       if (!currentCoords) {
-        statusBox.textContent = 'Activando GPS para iniciar el viaje...';
+        statusBox.textContent = 'Activando GPS para calcular ruta...';
         document.getElementById('locateBtn').click();
+        setTimeout(() => {
+          if (currentCoords) trazarRuta(L.latLng(currentCoords[0], currentCoords[1]), destino);
+        }, 2000);
       } else {
-        getRoute(currentCoords, point);
-        map.fitBounds(L.latLngBounds([currentCoords, point]), { padding: [50, 50] });
+        trazarRuta(L.latLng(currentCoords[0], currentCoords[1]), destino);
       }
     }
 
-    // Tocar el mapa para fijar un pin arbitrario
+    // Mostrar marcadores filtrados de la base de datos
+    function mostrarMarcadores(datos) {
+      markersLayer.clearLayers();
+      datos.forEach(item => {
+        const popupContent = `
+          <b>${item.calle}</b><br>
+          Barrio: ${item.barrio}<br>
+          <button class="btn-ruta" onclick="iniciarNavegacionBD(${item.lat}, ${item.lng}, '${item.calle}')">🚀 Navegar</button>
+        `;
+        L.marker([item.lat, item.lng]).addTo(markersLayer).bindPopup(popupContent);
+      });
+    }
+
+    function iniciarNavegacionBD(lat, lng, calle) {
+      startJourneyTo(lat, lng, calle);
+    }
+
+    function filtrarUbicaciones() {
+      const b = document.getElementById('filter-barrio').value.toLowerCase().trim();
+      const c = document.getElementById('filter-calle').value.toLowerCase().trim();
+
+      const filtrados = baseDeDatos.filter(item => {
+        const coincideBarrio = item.barrio.toLowerCase().includes(b);
+        const coincideCalle = item.calle.toLowerCase().includes(c);
+        return coincideBarrio && coincideCalle;
+      });
+
+      mostrarMarcadores(filtrados);
+      statusBox.textContent = `Mostrando ${filtrados.length} resultados de la base de datos.`;
+      
+      if (filtrados.length === 1) {
+        map.setView([filtrados[0].lat, filtrados[0].lng], 16);
+      }
+    }
+
+    // Tocar el mapa directamente
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
       if (targetMarker) map.removeLayer(targetMarker);
 
       const popupContent = document.createElement('div');
-      popupContent.innerHTML = `<b>Punto seleccionado</b><br><span style="font-size:11px; color:#666;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span><br>`;
+      popupContent.innerHTML = `<b>Punto seleccionado</b><br><span style="font-size:11px; color:#aaa;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span><br>`;
       
       const journeyBtn = document.createElement('button');
-      journeyBtn.className = 'popup-btn';
+      journeyBtn.className = 'btn-ruta';
       journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
       journeyBtn.onclick = () => {
-        startJourneyTo(lat, lng, 'el destino seleccionado');
+        startJourneyTo(lat, lng, 'el punto seleccionado');
         targetMarker.closePopup();
       };
       popupContent.appendChild(journeyBtn);
@@ -325,7 +366,7 @@
       targetMarker = L.marker([lat, lng]).addTo(map).bindPopup(popupContent).openPopup();
     });
 
-    // BÚSQUEDA MEJORADA CON ALTURAS (GeoRef AR -> Nominatim -> Photon)
+    // BÚSQUEDA GENERAL (GeoRef AR -> Nominatim)
     async function searchAddress() {
       const query = document.getElementById('address').value.trim();
       if (!query) {
@@ -336,110 +377,50 @@
       statusBox.textContent = `Buscando "${query}" en Formosa...`;
       let found = null;
 
-      // 1. GeoRef Argentina (INDEC/IGN): interpola alturas oficiales
       try {
         const georefUrl = new URL('https://apis.datos.gob.ar/georef/api/direcciones');
         georefUrl.searchParams.set('direccion', query);
         georefUrl.searchParams.set('provincia', 'Formosa');
         georefUrl.searchParams.set('departamento', 'Formosa');
-        georefUrl.searchParams.set('max', '3');
+        georefUrl.searchParams.set('max', '1');
 
-        const resGeoref = await fetch(georefUrl);
-        if (resGeoref.ok) {
-          const data = await resGeoref.json();
+        const res = await fetch(georefUrl);
+        if (res.ok) {
+          const data = await res.json();
           if (data.direcciones && data.direcciones.length > 0) {
             const item = data.direcciones[0];
-            if (item.ubicacion && item.ubicacion.lat && item.ubicacion.lon) {
-              found = {
-                lat: item.ubicacion.lat,
-                lon: item.ubicacion.lon,
-                name: item.nomenclatura || `${item.calle.nombre} ${item.altura.valor || ''}`
-              };
+            if (item.ubicacion?.lat) {
+              found = { lat: item.ubicacion.lat, lon: item.ubicacion.lon, name: item.nomenclatura };
             }
           }
         }
-      } catch (e) {
-        console.warn('GeoRef no disponible, saltando a Nominatim...', e);
-      }
+      } catch (e) { console.warn(e); }
 
-      // 2. Fallback: Nominatim (restringido al cuadro geográfico de Formosa)
+      // Fallback a Nominatim si GeoRef no responde
       if (!found) {
         try {
-          const nomUrl = new URL('https://nominatim.openstreetmap.org/search');
-          nomUrl.searchParams.set('format', 'jsonv2');
-          nomUrl.searchParams.set('q', `${query}, Formosa, Argentina`);
-          nomUrl.searchParams.set('countrycodes', 'ar');
-          nomUrl.searchParams.set('viewbox', '-58.26,-26.13,-58.12,-26.24');
-          nomUrl.searchParams.set('bounded', '1');
-          nomUrl.searchParams.set('limit', '3');
-
-          const resNom = await fetch(nomUrl, { headers: { 'Accept-Language': 'es' } });
-          if (resNom.ok) {
-            const results = await resNom.json();
+          const nomUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query + ', Formosa, Argentina')}&countrycodes=ar&limit=1`;
+          const res = await fetch(nomUrl, { headers: { 'Accept-Language': 'es' } });
+          if (res.ok) {
+            const results = await res.json();
             if (results.length > 0) {
-              found = {
-                lat: parseFloat(results[0].lat),
-                lon: parseFloat(results[0].lon),
-                name: results[0].display_name
-              };
+              found = { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon), name: results[0].display_name };
             }
           }
-        } catch (e) {
-          console.warn('Nominatim no disponible:', e);
-        }
+        } catch (e) { console.warn(e); }
       }
 
-      // 3. Fallback: Photon Komoot
       if (!found) {
-        try {
-          const photUrl = new URL('https://photon.komoot.io/api/');
-          photUrl.searchParams.set('q', `${query}, Formosa`);
-          photUrl.searchParams.set('lat', '-26.184');
-          photUrl.searchParams.set('lon', '-58.175');
-          photUrl.searchParams.set('limit', '3');
-          photUrl.searchParams.set('lang', 'es');
-
-          const resPhot = await fetch(photUrl);
-          if (resPhot.ok) {
-            const data = await resPhot.json();
-            if (data.features && data.features.length > 0) {
-              const item = data.features[0];
-              found = {
-                lat: item.geometry.coordinates[1],
-                lon: item.geometry.coordinates[0],
-                name: (item.properties.street || item.properties.name || query) + 
-                      (item.properties.housenumber ? ` ${item.properties.housenumber}` : '')
-              };
-            }
-          }
-        } catch (e) {
-          console.warn('Photon no disponible:', e);
-        }
-      }
-
-      if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
-        statusBox.textContent = '❌ No encontramos la dirección exacta. Probá con otra altura o tocala en el mapa.';
+        statusBox.textContent = '❌ No se encontró la dirección exacta. Probá tocando en el mapa.';
         return;
       }
 
-      // Posicionar pin encontrado en el mapa
-      const point = [found.lat, found.lon];
       if (targetMarker) map.removeLayer(targetMarker);
-
-      const popupContent = document.createElement('div');
-      popupContent.innerHTML = `<b>${found.name}</b><br><span style="font-size:11px; color:#666;">${found.lat.toFixed(5)}, ${found.lon.toFixed(5)}</span><br>`;
+      targetMarker = L.marker([found.lat, found.lon]).addTo(map)
+        .bindPopup(`<b>${found.name}</b><br><button class="btn-ruta" onclick="startJourneyTo(${found.lat}, ${found.lon}, '${found.name}')">🚀 Navegar</button>`)
+        .openPopup();
       
-      const journeyBtn = document.createElement('button');
-      journeyBtn.className = 'popup-btn';
-      journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
-      journeyBtn.onclick = () => {
-        startJourneyTo(found.lat, found.lon, found.name);
-        targetMarker.closePopup();
-      };
-      popupContent.appendChild(journeyBtn);
-
-      targetMarker = L.marker(point).addTo(map).bindPopup(popupContent).openPopup();
-      map.setView(point, 17);
+      map.setView([found.lat, found.lon], 17);
       statusBox.textContent = `📍 Encontrado: ${found.name}`;
     }
 
@@ -447,6 +428,9 @@
     document.getElementById('address').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') searchAddress();
     });
+
+    // Inicializar visualización de base de datos por defecto
+    mostrarMarcadores(baseDeDatos);
   </script>
 </body>
 </html>
