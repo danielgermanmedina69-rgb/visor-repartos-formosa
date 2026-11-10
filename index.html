@@ -58,16 +58,18 @@
     .btn-secondary:hover { background: #5a6268; }
     .btn-cancel { background: #d9534f; }
     .btn-cancel:hover { background: #c9302c; }
+    .btn-clear { background: #e0a800; color: #121212; }
+    .btn-clear:hover { background: #d39e00; }
     .btn-ruta { margin-top: 8px; width: 100%; background: #28a745; color: white; padding: 6px; border-radius: 4px; }
     .btn-ruta:hover { background: #218838; }
 
     .actions { display: flex; gap: 7px; flex-wrap: wrap; width: 100%; align-items: center; justify-content: space-between; }
+    .button-group { display: flex; gap: 6px; flex-wrap: wrap; }
     #status { font-size: 12px; color: var(--muted); line-height: 1.4; width: 100%; }
     
     #map { flex: 1; min-height: 280px; width: 100%; background: #1a1a1a; }
     footer { background: var(--bg); color: var(--muted); font-size: 10px; padding: 6px 12px; border-top: 1px solid #222; }
     
-    /* Estilos Leaflet oscuros personalizados */
     .leaflet-control-layers { background: var(--panel) !important; color: var(--ink) !important; border: 1px solid #444 !important; border-radius: 8px !important; }
     .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #222 !important; color: #fff !important; border-radius: 6px; }
     .leaflet-routing-container { background-color: #1e1e1e !important; color: #e0e0e0 !important; border-radius: 6px; padding: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
@@ -106,15 +108,16 @@
       <button onclick="filtrarUbicaciones()">Buscar</button>
     </div>
     
-    <!-- Buscador general de direcciones (Georef / Nominatim) -->
+    <!-- Buscador general de direcciones -->
     <div class="search-row">
       <input id="address" type="search" placeholder="Dirección exacta (ej. San Martín 150)...">
       <button id="searchBtn" class="btn-secondary">Geo-buscar</button>
     </div>
 
     <div class="actions">
-      <div>
+      <div class="button-group">
         <button id="locateBtn">📍 Mi Ubicación</button>
+        <button class="btn-clear" onclick="limpiarBusquedas()">🧹 Limpiar</button>
         <button id="stopBtn" class="btn-cancel">Pausar GPS</button>
       </div>
       <button class="btn-cancel" onclick="cancelarRuta()">Cancelar Ruta</button>
@@ -134,13 +137,11 @@
     const statusBox = document.getElementById('status');
     const map = L.map('map', { zoomControl: true }).setView([-26.1852, -58.1751], 14);
 
-    // Mapa base oscuro o callejero adaptado
     const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20, 
       attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // Capas WMS de Catastro de Formosa (IDEF)
     const wmsUrl = 'https://idef.formosa.gob.ar/servicios/wms';
     function cadastralLayer(name) {
       const layer = L.tileLayer.wms(wmsUrl, {
@@ -169,14 +170,12 @@
     L.control.layers({ 'Mapa base': streets }, overlays, { collapsed: false }).addTo(map);
     blocks.addTo(map);
 
-    // Base de datos local de entregas/repartos (puedes agregar más aquí)
     const baseDeDatos = [
       { id: 1, barrio: "Centro", calle: "San Martín 123", lat: -26.1822, lng: -58.1731 },
       { id: 2, barrio: "Don Bosco", calle: "Belgrano 456", lat: -26.1950, lng: -58.1810 },
       { id: 3, barrio: "Independencia", calle: "Eva Perón 789", lat: -26.1750, lng: -58.1650 }
     ];
 
-    // Variables de navegación y GPS
     let watchId = null;
     let gpsMarker = null;
     let accuracyCircle = null;
@@ -189,7 +188,6 @@
     const gpsIcon = L.divIcon({ className: '', html: '<div class="gps-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
     let markersLayer = L.layerGroup().addTo(map);
 
-    // Síntesis de voz (Text-to-Speech)
     function speak(text) {
       if (!('speechSynthesis' in window)) return;
       if (text === lastSpokenInstruction) return;
@@ -217,8 +215,8 @@
       return `Continuá por${name}.`;
     }
 
-    // Actualización de ubicación GPS
-    function showPosition(pos) {
+    // Actualización y centrado forzado de GPS
+    function showPosition(pos, forceCenter = false) {
       const lat = pos.coords.latitude, lon = pos.coords.longitude;
       const accuracy = pos.coords.accuracy || 25;
       currentCoords = [lat, lon];
@@ -226,10 +224,13 @@
       if (!gpsMarker) {
         gpsMarker = L.marker([lat, lon], { icon: gpsIcon, zIndexOffset: 1000 }).addTo(map).bindPopup('Tu ubicación GPS');
         accuracyCircle = L.circle([lat, lon], { radius: accuracy, color: '#007acc', weight: 1, fillOpacity: .15 }).addTo(map);
-        map.setView([lat, lon], 16);
+        map.setView([lat, lon], 17);
       } else {
         gpsMarker.setLatLng([lat, lon]);
         accuracyCircle.setLatLng([lat, lon]).setRadius(accuracy);
+        if (forceCenter) {
+          map.setView([lat, lon], 17);
+        }
       }
       
       if (window.lastTarget) {
@@ -248,16 +249,23 @@
       }
     }
 
+    // Botón Mi Ubicación optimizado para centrar el mapa inmediatamente
     document.getElementById('locateBtn').addEventListener('click', () => {
       if (!('geolocation' in navigator)) {
         statusBox.textContent = 'Geolocalización no disponible en este navegador.';
         return;
       }
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-      statusBox.textContent = 'Buscando señal GPS...';
-      watchId = navigator.geolocation.watchPosition(showPosition, () => {
+      statusBox.textContent = 'Obteniendo tu ubicación exacta...';
+      navigator.geolocation.getCurrentPosition(pos => {
+        showPosition(pos, true);
+        statusBox.textContent = '📍 Centrado en tu ubicación actual.';
+      }, () => {
         statusBox.textContent = 'No se pudo obtener ubicación. Verificá los permisos.';
-      }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+      }, { enableHighAccuracy: true, timeout: 10000 });
+
+      // Mantener rastreo en tiempo real
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = navigator.geolocation.watchPosition(pos => showPosition(pos, false), null, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
     });
 
     document.getElementById('stopBtn').addEventListener('click', () => {
@@ -267,7 +275,22 @@
       statusBox.textContent = 'GPS pausado y voz detenida.';
     });
 
-    // Trazado de ruta con OSRM Routing Machine
+    // Función para limpiar búsquedas, inputs y marcadores de búsqueda
+    function limpiarBusquedas() {
+      document.getElementById('filter-barrio').value = '';
+      document.getElementById('filter-calle').value = '';
+      document.getElementById('address').value = '';
+      
+      if (targetMarker) {
+        map.removeLayer(targetMarker);
+        targetMarker = null;
+      }
+      
+      cancelarRuta();
+      mostrarMarcadores(baseDeDatos);
+      statusBox.textContent = 'Se limpiaron las búsquedas y filtros.';
+    }
+
     function trazarRuta(origen, destino) {
       if (routingControl) map.removeControl(routingControl);
 
@@ -311,7 +334,6 @@
       }
     }
 
-    // Mostrar marcadores filtrados de la base de datos
     function mostrarMarcadores(datos) {
       markersLayer.clearLayers();
       datos.forEach(item => {
@@ -346,7 +368,6 @@
       }
     }
 
-    // Tocar el mapa directamente
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
       if (targetMarker) map.removeLayer(targetMarker);
@@ -366,7 +387,6 @@
       targetMarker = L.marker([lat, lng]).addTo(map).bindPopup(popupContent).openPopup();
     });
 
-    // BÚSQUEDA GENERAL (GeoRef AR -> Nominatim)
     async function searchAddress() {
       const query = document.getElementById('address').value.trim();
       if (!query) {
@@ -396,7 +416,6 @@
         }
       } catch (e) { console.warn(e); }
 
-      // Fallback a Nominatim si GeoRef no responde
       if (!found) {
         try {
           const nomUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query + ', Formosa, Argentina')}&countrycodes=ar&limit=1`;
@@ -429,7 +448,6 @@
       if (e.key === 'Enter') searchAddress();
     });
 
-    // Inicializar visualización de base de datos por defecto
     mostrarMarcadores(baseDeDatos);
   </script>
 </body>
