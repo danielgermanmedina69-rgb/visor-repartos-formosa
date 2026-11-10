@@ -70,7 +70,6 @@
     #map { flex: 1; min-height: 280px; width: 100%; background: #1a1a1a; }
     footer { background: var(--bg); color: var(--muted); font-size: 10px; padding: 6px 12px; border-top: 1px solid #222; }
     
-    /* Estilos del panel de navegación Leaflet */
     .leaflet-control-layers { background: var(--panel) !important; color: var(--ink) !important; border: 1px solid #444 !important; border-radius: 8px !important; }
     .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #222 !important; color: #fff !important; border-radius: 6px; }
     
@@ -112,16 +111,14 @@
   </header>
   
   <section class="controls">
-    <!-- Filtros base de datos -->
     <div class="search-row">
       <input type="text" id="filter-barrio" placeholder="Filtrar por Barrio...">
       <input type="text" id="filter-calle" placeholder="Filtrar por Calle o Altura...">
       <button onclick="filtrarUbicaciones()">Buscar</button>
     </div>
     
-    <!-- Buscador general -->
     <div class="search-row">
-      <input id="address" type="search" placeholder="Dirección exacta (ej. San Martín 150)...">
+      <input id="address" type="search" placeholder="Dirección exacta en Formosa (ej. San Martín 150)...">
       <button id="searchBtn" class="btn-secondary">Geo-buscar</button>
     </div>
 
@@ -146,7 +143,9 @@
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
   <script>
     const statusBox = document.getElementById('status');
-    const map = L.map('map', { zoomControl: true }).setView([-26.1852, -58.1751], 14);
+    
+    // CENTRADO ESTRICTO EN LA CIUDAD DE FORMOSA (-26.1775, -58.1781)
+    const map = L.map('map', { zoomControl: true }).setView([-26.1775, -58.1781], 14);
 
     const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20, 
@@ -181,6 +180,7 @@
     L.control.layers({ 'Mapa base': streets }, overlays, { collapsed: false }).addTo(map);
     blocks.addTo(map);
 
+    // Base de datos de ejemplo en Formosa Capital
     const baseDeDatos = [
       { id: 1, barrio: "Centro", calle: "San Martín 123", lat: -26.1822, lng: -58.1731 },
       { id: 2, barrio: "Don Bosco", calle: "Belgrano 456", lat: -26.1950, lng: -58.1810 },
@@ -198,7 +198,6 @@
     const gpsIcon = L.divIcon({ className: '', html: '<div class="gps-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
     let markersLayer = L.layerGroup().addTo(map);
 
-    // Sintetizador de voz optimizado (ES-AR)
     function speak(text) {
       if (!('speechSynthesis' in window)) return;
       if (text === lastSpokenInstruction) return;
@@ -300,7 +299,6 @@
       statusBox.textContent = 'Se limpiaron las búsquedas y filtros.';
     }
 
-    // Trazado de ruta OSRM con panel visible y captura de maniobras para voz
     function trazarRuta(origen, destino) {
       if (routingControl) {
         map.removeControl(routingControl);
@@ -354,7 +352,7 @@
           const origen = L.latLng(pos.coords.latitude, pos.coords.longitude);
           trazarRuta(origen, destino);
         }, () => {
-          statusBox.textContent = 'Usando centro del mapa como origen por falta de GPS.';
+          statusBox.textContent = 'Usando el centro de Formosa como origen por falta de GPS.';
           trazarRuta(map.getCenter(), destino);
         }, { enableHighAccuracy: true });
       } else {
@@ -412,6 +410,7 @@
       targetMarker = L.marker([lat, lng]).addTo(map).bindPopup(popupContent).openPopup();
     });
 
+    // BUSCADOR RESTRINGIDO EXCLUSIVAMENTE A FORMOSA CAPITAL
     async function searchAddress() {
       const query = document.getElementById('address').value.trim();
       if (!query) {
@@ -422,11 +421,11 @@
       statusBox.textContent = `Buscando "${query}" en Formosa...`;
       let found = null;
 
+      // 1. GeoRef AR forzado estrictamente a Provincia de Formosa
       try {
         const georefUrl = new URL('https://apis.datos.gob.ar/georef/api/direcciones');
         georefUrl.searchParams.set('direccion', query);
         georefUrl.searchParams.set('provincia', 'Formosa');
-        georefUrl.searchParams.set('departamento', 'Formosa');
         georefUrl.searchParams.set('max', '1');
 
         const res = await fetch(georefUrl);
@@ -441,9 +440,10 @@
         }
       } catch (e) { console.warn(e); }
 
+      // 2. Nominatim acotado al rectángulo geográfico exclusivo de Formosa Capital
       if (!found) {
         try {
-          const nomUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query + ', Formosa, Argentina')}&countrycodes=ar&limit=1`;
+          const nomUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query + ', Formosa, Argentina')}&countrycodes=ar&viewbox=-58.26,-26.13,-58.12,-26.24&bounded=1&limit=1`;
           const res = await fetch(nomUrl, { headers: { 'Accept-Language': 'es' } });
           if (res.ok) {
             const results = await res.json();
@@ -455,7 +455,7 @@
       }
 
       if (!found) {
-        statusBox.textContent = '❌ No se encontró la dirección exacta. Probá tocando en el mapa.';
+        statusBox.textContent = '❌ No se encontró la dirección exacta en Formosa. Probá tocando en el mapa.';
         return;
       }
 
