@@ -44,10 +44,9 @@
 <script>
     const map = L.map('map').setView([-26.1852, -58.1751], 13);
     
-    // Capa de mapa base en modo oscuro (CartoDB Dark Matter) - 100% Libre sin API Key
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-        subdomains: 'abcd',
+    // Capa base estándar 100% libre sin API Key
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19
     }).addTo(map);
 
@@ -120,7 +119,6 @@
     function trazarRuta(origen, destino) {
         if (routingControl) map.removeControl(routingControl);
 
-        // Servicio de ruteo público OSRM sin clave API
         routingControl = L.Routing.control({
             waypoints: [origen, destino],
             router: L.Routing.osrmv1({
