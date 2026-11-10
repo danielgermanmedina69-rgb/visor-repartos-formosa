@@ -17,7 +17,7 @@
     .controls { padding:10px 12px; background:var(--panel); display:grid; gap:8px; }
     .search { display:flex; gap:7px; }
     input { min-width:0; flex:1; border:1px solid #527568; border-radius:10px; padding:11px 12px; font-size:15px; background:#f8faf8; color:#15251f; }
-    button { border:0; border-radius:10px; padding:10px 12px; font-weight:700; font-size:14px; background:var(--accent); color:#1c261f; }
+    button { border:0; border-radius:10px; padding:10px 12px; font-weight:700; font-size:14px; background:var(--accent); color:#1c261f; cursor:pointer; }
     button.secondary { background:#dce9e2; }
     .actions { display:flex; gap:7px; flex-wrap:wrap; }
     .actions button { flex:1; min-width:120px; }
@@ -25,7 +25,9 @@
     #map { flex:1; min-height:280px; width:100%; background:#dce5df; }
     footer { background:var(--bg); color:var(--muted); font-size:11px; padding:7px 12px; }
     .leaflet-control-layers { border-radius:10px !important; }
-    .leaflet-popup-content { font-size:14px; }
+    .leaflet-popup-content { font-size:14px; text-align:center; }
+    .popup-btn { background: var(--panel); color: var(--ink); border: none; padding: 6px 10px; border-radius: 6px; margin-top: 6px; font-size: 12px; width: 100%; cursor: pointer; }
+    .popup-btn:hover { background: #224d40; }
     .gps-dot { width:18px; height:18px; border-radius:50%; background:#1685ff; border:3px solid white; box-shadow:0 1px 7px #333; }
     @media (min-width:700px) { body { max-width:900px; margin:auto; height:100dvh; border-left:1px solid #315448; border-right:1px solid #315448; } }
   </style>
@@ -44,7 +46,7 @@
       <button id="locateBtn">📍 Activar puntito azul</button>
       <button id="stopBtn" class="secondary">Pausar GPS</button>
     </div>
-    <div id="status">Mapa centrado en Formosa Capital. Activá el GPS cuando quieras compartir tu ubicación con este visor.</div>
+    <div id="status">Mapa centrado en Formosa Capital. Tocá cualquier punto del mapa para colocar un pin o buscá una dirección.</div>
   </section>
   <main id="map"></main>
   <footer>Cartografía catastral: IDEF / Dirección General de Catastro Territorial. Base de calles: OpenStreetMap. La información es orientativa y debe verificarse con Catastro.</footer>
@@ -82,7 +84,7 @@
     blocks.addTo(map);
     parcels.addTo(map);
 
-    let watchId = null, gpsMarker = null, accuracyCircle = null, currentCoords = null, routeLayer = null;
+    let watchId = null, gpsMarker = null, accuracyCircle = null, currentCoords = null, routeLayer = null, targetMarker = null;
     const gpsIcon = L.divIcon({ className:'', html:'<div class="gps-dot"></div>', iconSize:[18,18], iconAnchor:[9,9] });
 
     function showPosition(pos) {
@@ -98,9 +100,12 @@
         gpsMarker.setLatLng([lat,lon]);
         accuracyCircle.setLatLng([lat,lon]).setRadius(accuracy);
       }
-      statusBox.textContent = `GPS activo · precisión aproximada: ${Math.round(accuracy)} m. El puntito azul se actualizará mientras te movés.`;
+      
+      if (!window.lastTarget) {
+        statusBox.textContent = `GPS activo · precisión: ${Math.round(accuracy)} m. Tocá en el mapa o buscá una dirección para iniciar viaje.`;
+      }
 
-      // Si ya hay una búsqueda activa, actualizar la ruta en tiempo real al moverse
+      // Si hay un viaje activo, recalculamos la ruta en tiempo real mientras el vehículo avanza
       if (window.lastTarget) {
         getRoute(currentCoords, window.lastTarget);
       }
@@ -145,16 +150,60 @@
             map.removeLayer(routeLayer);
           }
           
-          routeLayer = L.polyline(coords, { color: '#1685ff', weight: 5, opacity: 0.8 }).addTo(map);
+          routeLayer = L.polyline(coords, { color: '#1685ff', weight: 5, opacity: 0.85 }).addTo(map);
           
           const distanceKm = (route.distance / 1000).toFixed(1);
           const durationMin = Math.round(route.duration / 60);
-          statusBox.textContent = `Ruta hacia el destino · Distancia: ${distanceKm} km (~${durationMin} min en vehículo).`;
+          statusBox.textContent = `Navegación activa · Distancia: ${distanceKm} km (~${durationMin} min).`;
         }
       } catch (e) {
         console.log('Error al calcular ruta', e);
       }
     }
+
+    // Iniciar viaje a un punto objetivo dado
+    function startJourneyTo(lat, lon, label) {
+      const point = [lat, lon];
+      window.lastTarget = point;
+
+      if (!currentCoords) {
+        statusBox.textContent = 'Activando GPS para iniciar el viaje...';
+        document.getElementById('locateBtn').click();
+      } else {
+        getRoute(currentCoords, point);
+        map.fitBounds(L.latLngBounds([currentCoords, point]), { padding: [50, 50] });
+      }
+    }
+
+    // Evento de clic en el mapa para agregar pin manual
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      const point = [lat, lng];
+
+      if (targetMarker) {
+        map.removeLayer(targetMarker);
+      }
+
+      const popupContent = document.createElement('div');
+      popupContent.innerHTML = `
+        <b>Pin personalizado</b><br>
+        <span style="font-size:11px; color:#666;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span><br>
+      `;
+      
+      const journeyBtn = document.createElement('button');
+      journeyBtn.className = 'popup-btn';
+      journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
+      journeyBtn.onclick = () => {
+        startJourneyTo(lat, lng, 'Pin personalizado');
+        targetMarker.closePopup();
+      };
+      popupContent.appendChild(journeyBtn);
+
+      targetMarker = L.marker(point)
+        .addTo(map)
+        .bindPopup(popupContent)
+        .openPopup();
+    });
 
     async function searchAddress() {
       const q = document.getElementById('address').value.trim();
@@ -220,6 +269,51 @@
           }
         } catch (e) {
           console.log('Segunda búsqueda no disponible');
+        }
+      }
+
+      // Mostrar resultado
+      if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
+        statusBox.textContent = 'No encontramos esa dirección. Probá con otra calle y altura.';
+        return;
+      }
+
+      const point = [found.lat, found.lon];
+
+      if (targetMarker) {
+        map.removeLayer(targetMarker);
+      }
+
+      const popupContent = document.createElement('div');
+      popupContent.innerHTML = `<b>${found.name}</b><br>`;
+      
+      const journeyBtn = document.createElement('button');
+      journeyBtn.className = 'popup-btn';
+      journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
+      journeyBtn.onclick = () => {
+        startJourneyTo(found.lat, found.lon, found.name);
+        targetMarker.closePopup();
+      };
+      popupContent.appendChild(journeyBtn);
+
+      targetMarker = L.marker(point)
+        .addTo(map)
+        .bindPopup(popupContent)
+        .openPopup();
+
+      map.setView(point, 17);
+      statusBox.textContent = 'Dirección encontrada. Tocá el botón en el mapa para iniciar viaje.';
+    }
+
+    // Asociar evento al botón de búsqueda
+    document.getElementById('searchBtn').addEventListener('click', searchAddress);
+    document.getElementById('address').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') searchAddress();
+    });
+  </script>
+</body>
+</html>
+no disponible');
         }
       }
 
