@@ -84,7 +84,47 @@
     parcels.addTo(map);
 
     let watchId = null, gpsMarker = null, accuracyCircle = null, currentCoords = null, routeLayer = null, targetMarker = null;
+    let currentSteps = [];
+    let lastSpokenInstruction = '';
     const gpsIcon = L.divIcon({ className:'', html:'<div class="gps-dot"></div>', iconSize:[18,18], iconAnchor:[9,9] });
+
+    // Función de síntesis de voz (Text-to-Speech)
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      // Evitar repetir la misma instrucción seguidas
+      if (text === lastSpokenInstruction) return;
+      lastSpokenInstruction = text;
+
+      window.speechSynthesis.cancel(); // Detener cualquier audio previo
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'es-AR';
+      utterance.rate = 1.0; // Velocidad normal
+      window.speechSynthesis.speak(utterance);
+    }
+
+    // Traducción simple de maniobras de OSRM al español amigable
+    function translateManeuver(step) {
+      const type = step.maneuver.type;
+      const modifier = step.maneuver.modifier;
+      const name = step.name ? ` en ${step.name}` : '';
+
+      switch (type) {
+        case 'depart': return `Iniciá la marcha${name}.`;
+        case 'arrive': return `Llegaste a tu destino.`;
+        case 'turn':
+          if (modifier === 'left') return `Girá a la izquierda${name}.`;
+          if (modifier === 'right') return `Girá a la derecha${name}.`;
+          if (modifier === 'slight left') return `Ligeramente a la izquierda${name}.`;
+          if (modifier === 'slight right') return `Ligeramente a la derecha${name}.`;
+          if (modifier === 'sharp left') return `Girá pronunciado a la izquierda${name}.`;
+          if (modifier === 'sharp right') return `Girá pronunciado a la derecha${name}.`;
+          if (modifier === 'uturn') return `Hacé un giro en U${name}.`;
+          break;
+        case 'continue': return `Continuá derecho${name}.`;
+        case 'roundabout': return `Entrá a la rotonda${name}.`;
+      }
+      return `Continuá por${name}.`;
+    }
 
     function showPosition(pos) {
       const lat = pos.coords.latitude, lon = pos.coords.longitude;
@@ -104,8 +144,30 @@
         statusBox.textContent = `GPS activo · precisión: ${Math.round(accuracy)} m. Tocá en el mapa o buscá una dirección para iniciar viaje.`;
       }
 
+      // Si hay un viaje activo, recalculamos ruta y verificamos proximidad a los giros
       if (window.lastTarget) {
         getRoute(currentCoords, window.lastTarget);
+        checkNavigationSteps(lat, lon);
+      }
+    }
+
+    // Verificar si nos acercamos a un punto de maniobra para decirlo por voz
+    function checkNavigationSteps(lat, lon) {
+      if (!currentSteps || currentSteps.length === 0) return;
+
+      // Tomamos el primer paso de la lista
+      const nextStep = currentSteps[0];
+      const stepCoord = [nextStep.maneuver.location[1], nextStep.maneuver.location[0]];
+      
+      // Distancia aproximada en metros al próximo giro
+      const dist = map.distance([lat, lon], stepCoord);
+
+      // Si estamos a menos de 40 metros del giro, cantamos la instrucción
+      if (dist < 40) {
+        const instruction = translateManeuver(nextStep);
+        speak(instruction);
+        // Quitamos el paso ya superado para pasar al siguiente
+        currentSteps.shift();
       }
     }
 
@@ -124,12 +186,14 @@
     document.getElementById('stopBtn').addEventListener('click', () => {
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       watchId = null;
-      statusBox.textContent = 'GPS pausado.';
+      window.speechSynthesis.cancel();
+      statusBox.textContent = 'GPS pausado y navegación por voz detenida.';
     });
 
     async function getRoute(start, end) {
       try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+        // Pedimos la ruta incluyendo las instrucciones paso a paso (steps=true)
+        const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson&steps=true`;
         const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
@@ -138,12 +202,17 @@
           const route = data.routes[0];
           const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
           
+          // Guardamos los pasos de navegación (legs -> steps)
+          if (route.legs && route.legs[0].steps) {
+            currentSteps = route.legs[0].steps;
+          }
+          
           if (routeLayer) map.removeLayer(routeLayer);
           routeLayer = L.polyline(coords, { color: '#1685ff', weight: 5, opacity: 0.85 }).addTo(map);
           
           const distanceKm = (route.distance / 1000).toFixed(1);
           const durationMin = Math.round(route.duration / 60);
-          statusBox.textContent = `Navegación activa · Distancia: ${distanceKm} km (~${durationMin} min).`;
+          statusBox.textContent = `🎙️ Navegación por voz activa · Distancia: ${distanceKm} km (~${durationMin} min).`;
         }
       } catch (e) {
         console.log('Error al calcular ruta', e);
@@ -153,6 +222,9 @@
     function startJourneyTo(lat, lon, label) {
       const point = [lat, lon];
       window.lastTarget = point;
+      lastSpokenInstruction = ''; // Reiniciar memoria de voz
+
+      speak("Iniciando ruta hacia " + label);
 
       if (!currentCoords) {
         statusBox.textContent = 'Activando GPS para iniciar el viaje...';
@@ -176,7 +248,7 @@
       journeyBtn.className = 'popup-btn';
       journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
       journeyBtn.onclick = () => {
-        startJourneyTo(lat, lng, 'Pin personalizado');
+        startJourneyTo(lat, lng, 'el destino seleccionado');
         targetMarker.closePopup();
       };
       popupContent.appendChild(journeyBtn);
@@ -223,7 +295,7 @@
           if (response.ok) {
             const data = await response.json();
             if (data.features.length > 0) {
-              const coords = data.features[0].geometry.coordinates;
+              const coords = data.features.getGeometry ? data.features[0].geometry.coordinates : data.features[0].geometry.coordinates;
               found = { lat: Number(coords[1]), lon: Number(coords[0]), name: data.features[0].properties.name || q };
             }
           }
@@ -245,9 +317,16 @@
       journeyBtn.className = 'popup-btn';
       journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
       journeyBtn.onclick = () => {
+        startJourney`to`(found.lat, found.lon, found.name);
+        targetMarker.closePopup();
+      };
+      
+      // Corrección limpia del botón de búsqueda para el viaje por voz
+      journeyBtn.onclick = () => {
         startJourneyTo(found.lat, found.lon, found.name);
         targetMarker.closePopup();
       };
+
       popupContent.appendChild(journeyBtn);
 
       targetMarker = L.marker(point).addTo(map).bindPopup(popupContent).openPopup();
