@@ -2,30 +2,17 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logística Dark Mode - Navegación Libre</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <title>Logística Dark Mode</title>
     <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-family: system-ui, -apple-system, sans-serif; }
-        #control-panel { padding: 12px 15px; background: #1e1e1e; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #333; }
-        input, button { background: #2d2d2d; color: #fff; border: 1px solid #444; padding: 8px 12px; border-radius: 4px; font-size: 14px; }
-        input:focus { outline: none; border-color: #007acc; }
-        button { cursor: pointer; background: #007acc; border: none; font-weight: bold; transition: background 0.2s; }
+        body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-family: sans-serif; }
+        #control-panel { padding: 15px; background: #1e1e1e; display: flex; gap: 10px; flex-wrap: wrap; }
+        input, select, button { background: #2d2d2d; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 4px; }
+        button { cursor: pointer; background: #007acc; border: none; }
         button:hover { background: #0098ff; }
-        .btn-cancel { background: #d9534f; }
-        .btn-cancel:hover { background: #c9302c; }
-        #resultado-info { font-size: 13px; color: #aaa; margin-left: auto; }
-        #map { height: calc(100vh - 61px); width: 100%; }
-        .leaflet-routing-container { background-color: #1e1e1e !important; color: #e0e0e0 !important; border-radius: 6px; padding: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        .leaflet-routing-alt { max-height: 200px; overflow-y: auto; background-color: #2d2d2d !important; color: #e0e0e0 !important; }
-        .leaflet-routing-alt table tr:hover { background-color: #333 !important; }
-        .leaflet-popup-content-wrapper { background: #222; color: #fff; border-radius: 6px; }
-        .leaflet-popup-tip { background: #222; }
-        .btn-ruta { margin-top: 8px; width: 100%; background: #28a745; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; }
-        .btn-ruta:hover { background: #218838; }
+        #map { height: calc(100vh - 60px); width: 100%; }
+        .leaflet-popup-content { color: #333; }
     </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 
@@ -33,26 +20,18 @@
     <input type="text" id="filter-barrio" placeholder="Filtrar por Barrio...">
     <input type="text" id="filter-calle" placeholder="Filtrar por Calle...">
     <button onclick="filtrarUbicaciones()">Buscar</button>
-    <button onclick="obtenerUbicacionActual()" style="background:#6c757d;">📍 Mi Ubicación</button>
-    <button class="btn-cancel" onclick="cancelarRuta()">Cancelar Ruta</button>
     <span id="resultado-info"></span>
 </div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
 <script>
     const map = L.map('map').setView([-26.1852, -58.1751], 13);
-    
-    // Capa base estándar 100% libre sin API Key
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; CARTO'
     }).addTo(map);
 
-    let userLocation = null;
-    let routingControl = null;
-    let markersLayer = L.layerGroup().addTo(map);
+    let markerPin = null;
 
     const baseDeDatos = [
         { id: 1, barrio: "Centro", calle: "San Martín 123", lat: -26.1822, lng: -58.1731 },
@@ -60,91 +39,62 @@
         { id: 3, barrio: "Independencia", calle: "Eva Perón 789", lat: -26.1750, lng: -58.1650 }
     ];
 
-    function obtenerUbicacionActual() {
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(position => {
-                userLocation = L.latLng(position.coords.latitude, position.coords.longitude);
-                L.circle(userLocation, { radius: position.coords.accuracy / 2, color: '#007acc', fillColor: '#007acc', fillOpacity: 0.3 }).addTo(map);
-                L.marker(userLocation).addTo(map).bindPopup("Tu ubicación actual").openPopup();
-                map.setView(userLocation, 14);
-            }, error => {
-                alert("No se pudo obtener la ubicación GPS.");
-            });
-        }
-    }
+    let markersLayer = L.layerGroup().addTo(map);
 
     function mostrarMarcadores(datos) {
         markersLayer.clearLayers();
         datos.forEach(item => {
             const popupContent = `
-                <b>${item.calle}</b><br>
-                Barrio: ${item.barrio}<br>
-                <button class="btn-ruta" onclick="iniciarNavegacion(${item.lat}, ${item.lng})">Navegar en tiempo real</button>
+                <b>${item.calle}</b><br>Barrio: ${item.barrio}<br>
+                <button onclick="fijarPin(${item.lat}, ${item.lng}, '${item.calle.replace(/'/g, "\\'")}')">Seleccionar Destino</button>
             `;
-            L.marker([item.lat, item.lng]).addTo(markersLayer).bindPopup(popupContent);
+            L.marker([item.lat, item.lng]).addTo(markersLayer)
+                .bindPopup(popupContent);
         });
     }
 
     function filtrarUbicaciones() {
-        const b = document.getElementById('filter-barrio').value.toLowerCase().trim();
-        const c = document.getElementById('filter-calle').value.toLowerCase().trim();
-
-        const filtrados = baseDeDatos.filter(item => {
-            const coincideBarrio = item.barrio.toLowerCase().includes(b);
-            const coincideCalle = item.calle.toLowerCase().includes(c);
-            return coincideBarrio && coincideCalle;
+        const b = document.getElementById('filter-barrio').value.toLowerCase();
+        const c = document.getElementById('filter-calle').value.toLowerCase();
+        const filtrados = baseDeDatos.map(item => {
+            const dist = item.distancia || 0;
+            let sobrecosto = 0;
+            if(dist > 240) sobrecosto = (dist - 240) * 50;
+            return { ...item, sobrecosto };
+        }).filter(item => {
+            const matchB = item.barrio.toLowerCase().includes(b);
+            const matchC = item.calle.toLowerCase().includes(c);
+            return matchB && matchC;
         });
 
         mostrarMarcadores(filtrados);
         document.getElementById('resultado-info').innerText = `Mostrando ${filtrados.length} resultados.`;
     }
 
-    function iniciarNavegacion(destLat, destLng) {
-        const destino = L.latLng(destLat, destLng);
+    function fijarPin(lat, lng, destinoNombre) {
+        if (markerPin) map.removeLayer(markerPin);
         
-        if (!userLocation) {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    userLocation = L.latLng(pos.coords.latitude, pos.coords.longitude);
-                    trazarRuta(userLocation, destino);
-                }, () => {
-                    alert("Usando el centro del mapa como origen al no disponer de GPS.");
-                    trazarRuta(map.getCenter(), destino);
-                });
-            } else {
-                trazarRuta(map.getCenter(), destino);
-            }
-        } else {
-            trazarRuta(userLocation, destino);
-        }
-    }
-
-    function trazarRuta(origen, destino) {
-        if (routingControl) map.removeControl(routingControl);
-
-        routingControl = L.Routing.control({
-            waypoints: [origen, destino],
-            router: L.Routing.osrmv1({
-                serviceUrl: 'https://router.project-osrm.org/route/v1'
-            }),
-            lineOptions: {
-                styles: [{ color: '#007acc', opacity: 0.8, weight: 6 }]
-            },
-            show: true,
-            addWaypoints: false,
-            draggableWaypoints: false,
-            fitSelectedRoutes: true
+        markerPin = L.marker([lat, lng], {
+            icon: L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            })
         }).addTo(map);
+
+        const gmapsLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+        const encodedName = encodeURIComponent(destinoNombre);
+        const wazeLink = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&q=${encodedName}`;
+
+        const pinPopup = `
+            <b>Destino Fijado</b><br>
+            <a href="${gmapsLink}" target="_blank">Navegar con Google Maps</a><br>
+            <a href="${wazeLink}" target="_blank">Navegar con Waze</a>
+        `;
+        markerPin.bindPopup(pinPopup).openPopup();
+        map.setView([lat, lng], 15);
     }
 
-    function cancelarRuta() {
-        if (routingControl) {
-            map.removeControl(routingControl);
-            routingControl = null;
-        }
-    }
-
-    obtenerUbicacionActual();
     mostrarMarcadores(baseDeDatos);
 </script>
 </body>
