@@ -274,70 +274,129 @@
         url.searchParams.set('limit', '5');
 
         const response = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-        if (response.ok) {
-          const results = await response.json();
-          if (results.length > 0) {
-            found = { lat: Number(results[0].lat), lon: Number(results[0].lon), name: results[0].display_name };
-          }
+async function searchAddress() {
+  const query = document.getElementById('address').value.trim();
+  if (!query) {
+    statusBox.textContent = 'Escribí una calle y una altura (ej. 25 de Mayo 150).';
+    return;
+  }
+
+  statusBox.textContent = `Buscando "${query}" en Formosa...`;
+  let found = null;
+
+  // -------------------------------------------------------------
+  // 1. PRIORIDAD: GeoRef Argentina (Calcula e interpola alturas oficiales)
+  // -------------------------------------------------------------
+  try {
+    const georefUrl = new URL('https://apis.datos.gob.ar/georef/api/direcciones');
+    georefUrl.searchParams.set('direccion', query);
+    georefUrl.searchParams.set('provincia', 'Formosa');
+    georefUrl.searchParams.set('departamento', 'Formosa'); // Prioriza Capital
+    georefUrl.searchParams.set('max', '3');
+
+    const resGeoref = await fetch(georefUrl);
+    if (resGeoref.ok) {
+      const data = await resGeoref.json();
+      if (data.direcciones && data.direcciones.length > 0) {
+        const item = data.direcciones[0];
+        if (item.ubicacion && item.ubicacion.lat && item.ubicacion.lon) {
+          found = {
+            lat: item.ubicacion.lat,
+            lon: item.ubicacion.lon,
+            name: item.nomenclatura || `${item.calle.nombre} ${item.altura.valor || ''}`
+          };
         }
-      } catch (e) {}
-
-      if (!found) {
-        try {
-          const url = new URL('https://photon.komoot.io/api/');
-          url.searchParams.set('q', q + ', Formosa, Argentina');
-          url.searchParams.set('lat', '-26.184');
-          url.searchParams.set('lon', '-58.175');
-          url.searchParams.set('limit', '5');
-          url.searchParams.set('lang', 'es');
-
-          const response = await fetch(url);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.features.length > 0) {
-              const coords = data.features.getGeometry ? data.features[0].geometry.coordinates : data.features[0].geometry.coordinates;
-              found = { lat: Number(coords[1]), lon: Number(coords[0]), name: data.features[0].properties.name || q };
-            }
-          }
-        } catch (e) {}
       }
-
-      if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
-        statusBox.textContent = 'No encontramos esa dirección.';
-        return;
-      }
-
-      const point = [found.lat, found.lon];
-      if (targetMarker) map.removeLayer(targetMarker);
-
-      const popupContent = document.createElement('div');
-      popupContent.innerHTML = `<b>${found.name}</b><br>`;
-      
-      const journeyBtn = document.createElement('button');
-      journeyBtn.className = 'popup-btn';
-      journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
-      journeyBtn.onclick = () => {
-        startJourney`to`(found.lat, found.lon, found.name);
-        targetMarker.closePopup();
-      };
-      
-      // Corrección limpia del botón de búsqueda para el viaje por voz
-      journeyBtn.onclick = () => {
-        startJourneyTo(found.lat, found.lon, found.name);
-        targetMarker.closePopup();
-      };
-
-      popupContent.appendChild(journeyBtn);
-
-      targetMarker = L.marker(point).addTo(map).bindPopup(popupContent).openPopup();
-      map.setView(point, 17);
-      statusBox.textContent = 'Dirección encontrada. Tocá el botón en el mapa para iniciar viaje.';
     }
+  } catch (e) {
+    console.warn('Error en GeoRef:', e);
+  }
 
-    document.getElementById('searchBtn').addEventListener('click', searchAddress);
-    document.getElementById('address').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') searchAddress();
-    });
-  </script>
-</body>
-</html>
+  // -------------------------------------------------------------
+  // 2. SEGUNDA OPCIÓN: Nominatim (Con vista restringida a Formosa)
+  // -------------------------------------------------------------
+  if (!found) {
+    try {
+      const nomUrl = new URL('https://nominatim.openstreetmap.org/search');
+      nomUrl.searchParams.set('format', 'jsonv2');
+      nomUrl.searchParams.set('q', `${query}, Formosa, Argentina`);
+      nomUrl.searchParams.set('countrycodes', 'ar');
+      // Recorte rectangular aproximado de Formosa Capital y alrededores:
+      nomUrl.searchParams.set('viewbox', '-58.26,-26.13,-58.12,-26.24');
+      nomUrl.searchParams.set('bounded', '1');
+      nomUrl.searchParams.set('limit', '3');
+
+      const resNom = await fetch(nomUrl, { headers: { 'Accept-Language': 'es' } });
+      if (resNom.ok) {
+        const results = await resNom.json();
+        if (results.length > 0) {
+          found = {
+            lat: parseFloat(results[0].lat),
+            lon: parseFloat(results[0].lon),
+            name: results[0].display_name
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Error en Nominatim:', e);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // 3. TERCERA OPCIÓN: Photon (Komoot con sesgo geográfico)
+  // -------------------------------------------------------------
+  if (!found) {
+    try {
+      const photUrl = new URL('https://photon.komoot.io/api/');
+      photUrl.searchParams.set('q', `${query}, Formosa`);
+      photUrl.searchParams.set('lat', '-26.184');
+      photUrl.searchParams.set('lon', '-58.175');
+      photUrl.searchParams.set('limit', '3');
+      photUrl.searchParams.set('lang', 'es');
+
+      const resPhot = await fetch(photUrl);
+      if (resPhot.ok) {
+        const data = await resPhot.json();
+        if (data.features && data.features.length > 0) {
+          const item = data.features[0];
+          found = {
+            lat: item.geometry.coordinates[1],
+            lon: item.geometry.coordinates[0],
+            name: (item.properties.street || item.properties.name || query) + 
+                  (item.properties.housenumber ? ` ${item.properties.housenumber}` : '')
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Error en Photon:', e);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // Validar si encontramos coordenadas válidas
+  // -------------------------------------------------------------
+  if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lon)) {
+    statusBox.textContent = '❌ No encontramos esa dirección ni altura en Formosa. Probá con otra calle o tocá el mapa directamente.';
+    return;
+  }
+
+  // Marcamos en el mapa y preparamos botón de navegación
+  const point = [found.lat, found.lon];
+  if (targetMarker) map.removeLayer(targetMarker);
+
+  const popupContent = document.createElement('div');
+  popupContent.innerHTML = `<b>${found.name}</b><br><span style="font-size:11px; color:#666;">${found.lat.toFixed(5)}, ${found.lon.toFixed(5)}</span><br>`;
+  
+  const journeyBtn = document.createElement('button');
+  journeyBtn.className = 'popup-btn';
+  journeyBtn.textContent = '🚀 Iniciar viaje hasta aquí';
+  journeyBtn.onclick = () => {
+    startJourneyTo(found.lat, found.lon, found.name);
+    targetMarker.closePopup();
+  };
+  popupContent.appendChild(journeyBtn);
+
+  targetMarker = L.marker(point).addTo(map).bindPopup(popupContent).openPopup();
+  map.setView(point, 17);
+  statusBox.textContent = `📍 Ubicado: ${found.name}`;
+}
