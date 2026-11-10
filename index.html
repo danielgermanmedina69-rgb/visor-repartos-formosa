@@ -44,7 +44,7 @@
       <button id="locateBtn">📍 Activar puntito azul</button>
       <button id="stopBtn" class="secondary">Pausar GPS</button>
     </div>
-    <div id="status">Mapa centrado en Formosa Capital. Activá el GPS cuando quieras compartir tu ubicación con este visor.</div>
+    <div id="status">Mapa centrado en Formosa Capital. Activá el GPS y buscá una dirección o tacá el mapa para navegar.</div>
   </section>
   <main id="map"></main>
   <footer>Cartografía catastral: IDEF / Dirección General de Catastro Territorial. Base de calles: OpenStreetMap. La información es orientativa y debe verificarse con Catastro.</footer>
@@ -97,7 +97,7 @@
         gpsMarker.setLatLng([lat,lon]);
         accuracyCircle.setLatLng([lat,lon]).setRadius(accuracy);
       }
-      statusBox.textContent = `GPS activo · precisión aproximada: ${Math.round(accuracy)} m.`;
+      statusBox.textContent = `GPS activo · precisión: ${Math.round(accuracy)} m.`;
 
       if (window.lastTarget) {
         getRoute(currentCoords, window.lastTarget);
@@ -138,16 +138,30 @@
           
           const distanceKm = (route.distance / 1000).toFixed(1);
           const durationMin = Math.round(route.duration / 60);
-          statusBox.textContent = `Ruta hacia destino: ${distanceKm} km (~${durationMin} min).`;
+          statusBox.textContent = `Ruta: ${distanceKm} km (~${durationMin} min).`;
         }
       } catch (e) {
         console.log('Error al calcular ruta', e);
       }
     }
 
+    // Funcionalidad de tocar el mapa para fijar destino
+    map.on('click', (e) => {
+      const point = [e.latlng.lat, e.latlng.lng];
+      window.lastTarget = point;
+
+      if (window.searchMarker) map.removeLayer(window.searchMarker);
+      window.searchMarker = L.marker(point).addTo(map).bindPopup('Destino seleccionado').openPopup();
+
+      if (currentCoords) {
+        getRoute(currentCoords, point);
+      } else {
+        statusBox.textContent = 'Destino fijado. Activá el GPS para ver la ruta.';
+      }
+    });
+
     async function searchAddress() {
       const inputVal = document.getElementById('address').value.trim();
-      // Forzamos la inclusión de la ciudad y país para centrar la búsqueda en calles
       const q = inputVal.toLowerCase().includes('formosa') ? inputVal : `${inputVal}, Formosa, Argentina`;
 
       if (!inputVal) {
@@ -158,7 +172,6 @@
       statusBox.textContent = 'Buscando dirección en Formosa...';
       let found = null;
 
-      // Primera fuente: OpenStreetMap
       try {
         const url = new URL('https://nominatim.openstreetmap.org/search');
         url.searchParams.set('format', 'jsonv2');
@@ -170,10 +183,8 @@
         const response = await fetch(url, { headers: { 'Accept-Language': 'es' } });
         if (response.ok) {
           const results = await response.json();
-          // Filtramos para intentar obtener un resultado que contenga una calle específica
           const streetResult = results.find(r => r.address && (r.address.road || r.address.pedestrian));
           const r = streetResult || results[0];
-
           if (r) {
             found = { lat: Number(r.lat), lon: Number(r.lon), name: r.display_name };
           }
@@ -182,7 +193,6 @@
         console.log('Primera búsqueda no disponible');
       }
 
-      // Segunda fuente: Photon (Respaldo)
       if (!found) {
         try {
           const url = new URL('https://photon.komoot.io/api/');
@@ -237,4 +247,3 @@
   </script>
 </body>
 </html>
-
